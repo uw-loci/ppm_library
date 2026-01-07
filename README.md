@@ -2,6 +2,11 @@
 
 Image processing library for polarized light microscopy (PPM) and general microscopy imaging.
 
+> **Part of the QPSC (QuPath Scope Control) system**
+> For complete installation instructions, see: https://github.com/uw-loci/QPSC
+>
+> **Note:** This library can also be used standalone for general microscopy image processing.
+
 ## Features
 
 - **PPM Processing**: Polarizer calibration, birefringence analysis, sensitivity testing
@@ -12,6 +17,9 @@ Image processing library for polarized light microscopy (PPM) and general micros
 
 ## Installation
 
+**For QPSC users:** Use the [QPSC installation instructions](https://github.com/uw-loci/QPSC#quick-start) which includes this library.
+
+**Standalone installation:**
 ```bash
 pip install ppm-library
 ```
