@@ -36,7 +36,7 @@ __author__ = "Mike Nelson, Bin Li, Jenu Chacko"
 # Make key classes easily accessible
 from ppm_library.ppm.calibration import PolarizerCalibrationUtils
 from ppm_library.imaging.background import BackgroundCorrectionUtils
-from ppm_library.imaging.tissue_detection import EmptyRegionDetector
+from microscope_control.autofocus.tissue_detection import EmptyRegionDetector
 from ppm_library.imaging.writer import TifWriterUtils
 from ppm_library.debayering.cpu import CPUDebayer
 

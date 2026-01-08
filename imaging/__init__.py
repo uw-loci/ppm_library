@@ -7,15 +7,13 @@ NOT specific to any particular modality (PPM, brightfield, etc).
 Modules:
     background: Background correction utilities (BackgroundCorrectionUtils)
     writer: TIFF writing utilities (TifWriterUtils)
-    tissue_detection: Empty region / tissue detection (EmptyRegionDetector)
     jai_calibration: JAI camera white balance calibration (JAIWhiteBalanceCalibrator)
 """
 
 from ppm_library.imaging.writer import TifWriterUtils
 from ppm_library.imaging.background import BackgroundCorrectionUtils
-from ppm_library.imaging.tissue_detection import EmptyRegionDetector
 
-__all__ = ["TifWriterUtils", "BackgroundCorrectionUtils", "EmptyRegionDetector"]
+__all__ = ["TifWriterUtils", "BackgroundCorrectionUtils"]
 
 # Optional: JAI calibration (may not be needed on all systems)
 try:
