@@ -25,15 +25,27 @@ class BackgroundCorrectionUtils:
         Find background color using histogram mode approach.
 
         Args:
-            image: RGB image array
+            image: RGB image array (HxWx3) or grayscale image (HxW)
             bin_size: Size of histogram bins (smaller = more precise but noisier)
             mode_tolerance: Pixels within this range of mode are considered background
 
         Returns:
-            Tuple of (background_mean_rgb, confidence_score)
+            Tuple of (background_mean, confidence_score)
+            For RGB images, background_mean is array of shape (3,)
+            For grayscale images, background_mean is a scalar
         """
+        # Check if image is RGB or grayscale
+        is_rgb = image.ndim == 3
+
         # Convert to grayscale for mode detection
-        gray = np.mean(image, axis=2).astype(np.uint8)
+        if is_rgb:
+            gray = np.mean(image, axis=2).astype(np.uint8)
+        else:
+            # For grayscale uint16 images, normalize to uint8 range for histogram
+            if image.dtype == np.uint16:
+                gray = (image / 256).astype(np.uint8)
+            else:
+                gray = image.astype(np.uint8)
 
         # Calculate histogram with reasonable bins
         hist, bins = np.histogram(gray, bins=256 // bin_size, range=(0, 255))
@@ -48,15 +60,23 @@ class BackgroundCorrectionUtils:
         # Calculate confidence (what fraction of image is background)
         confidence = np.sum(background_mask) / gray.size
 
-        # Get RGB values of background pixels
-        background_pixels = image[background_mask]
-
-        if len(background_pixels) > 0:
-            background_mean = background_pixels.mean(axis=0)
+        # Get background pixel values
+        if is_rgb:
+            background_pixels = image[background_mask]
+            if len(background_pixels) > 0:
+                background_mean = background_pixels.mean(axis=0)
+            else:
+                # Fallback to image mean if no background found
+                background_mean = image.mean(axis=(0, 1))
+                confidence = 0.0
         else:
-            # Fallback to image mean if no background found
-            background_mean = image.mean(axis=(0, 1))
-            confidence = 0.0
+            # For grayscale images
+            if np.sum(background_mask) > 0:
+                background_mean = image[background_mask].mean()
+            else:
+                # Fallback to image mean if no background found
+                background_mean = image.mean()
+                confidence = 0.0
 
         return background_mean, confidence
 
@@ -263,6 +283,7 @@ class BackgroundCorrectionUtils:
         background: np.ndarray,
         scaling_factor: float,
         method: str = "divide",
+        epsilon: float = 0.1,
     ) -> np.ndarray:
         """
         Apply flat-field correction with pre-calculated scaling for consistency.
@@ -275,6 +296,7 @@ class BackgroundCorrectionUtils:
             background: Background image
             scaling_factor: Pre-calculated scaling factor
             method: Correction method ('divide' or 'subtract')
+            epsilon: Small value to prevent division by zero (default: 0.1)
 
         Returns:
             Corrected image
@@ -311,7 +333,6 @@ class BackgroundCorrectionUtils:
             )
 
         # Prevent division by zero with small epsilon
-        epsilon = 0.1
         bg_float = np.where(bg_float < epsilon, epsilon, bg_float)
 
         if method == "divide":

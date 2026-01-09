@@ -33,7 +33,20 @@ class CPUDebayer:
         self.masks = patterns[self.pattern]
 
     def debayer(self, bayer_img):
-        """Perform CPU debayering using bilinear interpolation"""
+        """Perform CPU debayering using bilinear interpolation
+
+        Preserves input dtype - uint8 input -> uint8 output, uint16 input -> uint16 output.
+        Works internally in float32 for precision, then converts back to input dtype.
+        """
+        # Store input dtype to preserve it in output
+        input_dtype = bayer_img.dtype
+
+        # Determine appropriate clipping max based on input dtype
+        if input_dtype == np.uint8:
+            clip_max = 255
+        else:
+            clip_max = self.image_bit_clipmax
+
         img = bayer_img.astype(np.float32)
         h, w = img.shape
 
@@ -69,7 +82,8 @@ class CPUDebayer:
             rgb[g_y::2, g_x::2, 1] = img[g_y::2, g_x::2]
         rgb[b_y::2, b_x::2, 2] = img[b_y::2, b_x::2]
 
-        return np.clip(rgb, 0, self.image_bit_clipmax).astype(self.image_dtype)
+        # Clip and convert back to input dtype
+        return np.clip(rgb, 0, clip_max).astype(input_dtype)
 
 
 def process_image(filepath, pattern="GRBG"):
