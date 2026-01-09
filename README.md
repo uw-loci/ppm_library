@@ -19,6 +19,11 @@ Image processing library for polarized light microscopy (PPM) and general micros
 
 **Part of [QPSC (QuPath Scope Control)](https://github.com/uw-loci/QPSC)**
 
+**Requirements:**
+- Python 3.9 or later
+- pip (Python package installer)
+- Git (for `pip install git+https://...` commands)
+
 This library has no dependencies on other QPSC packages and can be used standalone.
 See the [QPSC Installation Guide](https://github.com/uw-loci/QPSC#automated-installation-windows) for complete QPSC setup.
 
