@@ -36,14 +36,15 @@ __author__ = "Mike Nelson, Bin Li, Jenu Chacko"
 # Make key classes easily accessible
 from ppm_library.ppm.calibration import PolarizerCalibrationUtils
 from ppm_library.imaging.background import BackgroundCorrectionUtils
-from microscope_control.autofocus.tissue_detection import EmptyRegionDetector
+# NOTE: EmptyRegionDetector removed from top-level imports to avoid circular dependency
+# ppm_library should not depend on microscope_control (violates standalone design principle)
+# Import directly from microscope_control if needed: from microscope_control.autofocus.tissue_detection import EmptyRegionDetector
 from ppm_library.imaging.writer import TifWriterUtils
 from ppm_library.debayering.cpu import CPUDebayer
 
 __all__ = [
     "PolarizerCalibrationUtils",
     "BackgroundCorrectionUtils",
-    "EmptyRegionDetector",
     "TifWriterUtils",
     "CPUDebayer",
 ]
