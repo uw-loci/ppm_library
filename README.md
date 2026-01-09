@@ -17,17 +17,35 @@ Image processing library for polarized light microscopy (PPM) and general micros
 
 ## Installation
 
-**For QPSC users:** Use the [QPSC installation instructions](https://github.com/uw-loci/QPSC#quick-start) which includes this library.
+**Part of [QPSC (QuPath Scope Control)](https://github.com/uw-loci/QPSC)**
 
-**Standalone installation:**
+This library has no dependencies on other QPSC packages and can be used standalone.
+See the [QPSC Installation Guide](https://github.com/uw-loci/QPSC#automated-installation-windows) for complete QPSC setup.
+
+### Quick Install (from GitHub)
+
+**Standard installation:**
 ```bash
-pip install ppm-library
+pip install git+https://github.com/uw-loci/ppm_library.git
 ```
 
-For GPU support:
+**With GPU support:**
 ```bash
-pip install ppm-library[gpu]
+pip install "git+https://github.com/uw-loci/ppm_library.git#egg=ppm-library[gpu]"
 ```
+
+### Development Install (editable mode)
+
+```bash
+git clone https://github.com/uw-loci/ppm_library.git
+cd ppm_library
+pip install -e .
+
+# Or with GPU support:
+pip install -e ".[gpu]"
+```
+
+**For automated setup**, use the [QPSC setup script](https://github.com/uw-loci/QPSC/blob/main/PPM-QuPath.ps1).
 
 ## Quick Start
 
