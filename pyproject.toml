@@ -1,7 +1,7 @@
 [project]
 name = "ppm-library"
-version = "1.0.0"
-description = "Image processing library for polarized light microscopy and general microscopy imaging"
+version = "1.1.0"
+description = "Unified library for polarized light microscopy - acquisition support and image analysis"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -10,16 +10,35 @@ authors = [
     {name = "Bin Li", email = "bli346@wisc.edu"},
     {name = "Jenu Chacko", email = "jenu.chacko@wisc.edu"}
 ]
+keywords = ["ppm", "polarization", "microscopy", "image-analysis", "calibration", "fiber-orientation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
 dependencies = [
     "numpy>=1.24.0",
     "scipy>=1.11.0",
     "scikit-image>=0.21.0",
     "tifffile>=2023.7.0",
+    "opencv-python>=4.8.0",
+    "Pillow>=10.0.0",
+    "matplotlib>=3.7.0",
 ]
 
 [project.optional-dependencies]
 gpu = [
     "cupy>=12.0.0",
+]
+bioformats = [
+    "python-bioformats>=1.5.2",
 ]
 dev = [
     "pytest>=7.4.0",
@@ -56,7 +75,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
     "--verbose",
-    "--cov=ppm",
+    "--cov=ppm_library",
     "--cov-report=term-missing",
     "--cov-report=html",
 ]

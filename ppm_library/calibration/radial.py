@@ -1,0 +1,906 @@
+"""
+Radial Calibration Module.
+
+This module provides tools for creating hue-to-angle linear regression models
+using radial sampling from calibration slides with connected sunburst patterns.
+
+Unlike region-based segmentation (SunburstCalibrator), this approach samples
+hue values along radial lines from the center, which works better when spokes
+connect at the center and form a single region.
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional, Tuple, List, Union
+
+import numpy as np
+from scipy import ndimage, stats
+from skimage import color, morphology, measure
+from skimage.io import imread
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+
+
+# ROYGBIV color positions in hue space (0-1)
+# Red=0, Orange≈0.08, Yellow≈0.17, Green≈0.33, Blue≈0.58, Indigo≈0.67, Violet≈0.75, Red=1.0
+ROYGBIV_COLORS = [
+    (0.000, 'R', 'red'),
+    (0.083, 'O', 'orange'),
+    (0.167, 'Y', 'yellow'),
+    (0.333, 'G', 'green'),
+    (0.500, 'C', 'cyan'),
+    (0.583, 'B', 'blue'),
+    (0.667, 'I', 'indigo'),
+    (0.750, 'V', 'violet'),
+    (0.917, 'M', 'magenta'),
+]
+
+
+def add_hue_colorbar(ax, orientation='horizontal'):
+    """Add a rainbow colorbar to indicate hue values.
+
+    Args:
+        ax: Matplotlib axes
+        orientation: 'horizontal' or 'vertical'
+    """
+    # Create a gradient of hue values
+    if orientation == 'horizontal':
+        gradient = np.linspace(0, 1, 256).reshape(1, -1)
+    else:
+        gradient = np.linspace(0, 1, 256).reshape(-1, 1)
+
+    # Convert hue to RGB
+    hsv = np.zeros((*gradient.shape, 3))
+    hsv[:, :, 0] = gradient
+    hsv[:, :, 1] = 1.0  # Full saturation
+    hsv[:, :, 2] = 1.0  # Full value
+    rgb = mcolors.hsv_to_rgb(hsv)
+
+    return rgb
+
+
+def add_roygbiv_labels(ax, y_position=-0.12):
+    """Add ROYGBIV letter labels below the x-axis.
+
+    Args:
+        ax: Matplotlib axes (assumes x-axis is hue 0-1)
+        y_position: Relative y position for labels (in axes coordinates)
+    """
+    for hue, letter, color_name in ROYGBIV_COLORS:
+        ax.annotate(
+            letter,
+            xy=(hue, 0),
+            xycoords=('data', 'axes fraction'),
+            xytext=(0, -25),
+            textcoords='offset points',
+            ha='center',
+            va='top',
+            fontsize=10,
+            fontweight='bold',
+            color=color_name,
+        )
+
+
+def create_hue_axis_colorbar(ax):
+    """Add a thin rainbow bar below the x-axis to show hue colors.
+
+    Args:
+        ax: Matplotlib axes (assumes x-axis is hue 0-1)
+    """
+    # Get axis position
+    pos = ax.get_position()
+
+    # Create a new axes for the colorbar below the plot
+    cbar_ax = ax.figure.add_axes([pos.x0, pos.y0 - 0.05, pos.width, 0.02])
+
+    # Create hue gradient
+    gradient = np.linspace(0, 1, 256).reshape(1, -1)
+    hsv = np.zeros((1, 256, 3))
+    hsv[0, :, 0] = gradient
+    hsv[0, :, 1] = 1.0
+    hsv[0, :, 2] = 1.0
+    rgb = mcolors.hsv_to_rgb(hsv)
+
+    cbar_ax.imshow(rgb, aspect='auto', extent=[0, 1, 0, 1])
+    cbar_ax.set_xlim(0, 1)
+    cbar_ax.set_xticks([])
+    cbar_ax.set_yticks([])
+
+    # Add ROYGBIV labels
+    for hue, letter, color_name in ROYGBIV_COLORS:
+        cbar_ax.text(hue, -0.5, letter, ha='center', va='top',
+                     fontsize=9, fontweight='bold', color='black')
+
+    return cbar_ax
+
+
+@dataclass
+class RadialSample:
+    """Data for a single radial sample."""
+    angle: float  # Angle in degrees (0-180)
+    hue_mean: float  # Mean hue value along the radial line
+    hue_std: float  # Standard deviation of hue
+    n_samples: int  # Number of pixels sampled
+
+
+@dataclass
+class RadialCalibrationResult:
+    """Result of radial calibration."""
+
+    # Regression coefficients: angle = inv_slope * hue_shifted + inv_intercept
+    slope: float  # hue_shifted = slope * angle + intercept
+    intercept: float
+    inv_slope: float  # angle = inv_slope * hue_shifted + inv_intercept
+    inv_intercept: float
+    r_squared: float
+
+    # Hue offset for unwrapping (hue_shifted = (hue_raw - hue_offset) % 1.0)
+    hue_offset: float
+
+    # Raw data (hue_values are shifted)
+    angles: np.ndarray
+    hue_values: np.ndarray  # Shifted hue values
+    samples: List[RadialSample]
+
+    # Center detection
+    center: Tuple[int, int]  # (y, x) pixel coordinates
+
+    # Diagnostics
+    warnings: List[str] = None  # List of warning messages
+    rotation: float = 0.0  # Optimal rotation offset found
+
+    def hue_to_angle(self, hue: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+        """Convert raw hue value(s) to angle(s) in degrees.
+
+        Args:
+            hue: Raw hue value(s) in range [0, 1]
+
+        Returns:
+            Angle(s) in degrees [0, 180)
+        """
+        # Apply hue offset to unwrap
+        hue_shifted = (np.asarray(hue) - self.hue_offset) % 1.0
+        angle = self.inv_slope * hue_shifted + self.inv_intercept
+        return np.mod(angle, 180.0)
+
+    def angle_to_hue(self, angle: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+        """Convert angle(s) to raw hue value(s).
+
+        Args:
+            angle: Angle(s) in degrees
+
+        Returns:
+            Raw hue value(s) in range [0, 1]
+        """
+        # Compute shifted hue, then reverse the offset
+        hue_shifted = self.slope * np.asarray(angle) + self.intercept
+        hue_raw = (hue_shifted + self.hue_offset) % 1.0
+        return hue_raw
+
+    def save(self, path: Union[str, Path]) -> None:
+        """Save calibration to NPZ file."""
+        np.savez(
+            path,
+            slope=self.slope,
+            intercept=self.intercept,
+            inv_slope=self.inv_slope,
+            inv_intercept=self.inv_intercept,
+            r_squared=self.r_squared,
+            hue_offset=self.hue_offset,
+            angles=self.angles,
+            hue_values=self.hue_values,
+            center=np.array(self.center),
+        )
+
+    @classmethod
+    def load(cls, path: Union[str, Path]) -> "RadialCalibrationResult":
+        """Load calibration from NPZ file."""
+        data = np.load(path)
+        return cls(
+            slope=float(data["slope"]),
+            intercept=float(data["intercept"]),
+            inv_slope=float(data["inv_slope"]),
+            inv_intercept=float(data["inv_intercept"]),
+            r_squared=float(data["r_squared"]),
+            hue_offset=float(data["hue_offset"]),
+            angles=data["angles"],
+            hue_values=data["hue_values"],
+            samples=[],
+            center=tuple(data["center"]),
+        )
+
+
+class RadialCalibrator:
+    """Calibrator using radial sampling for connected sunburst patterns.
+
+    This approach samples hue values along radial lines from the center of
+    the sunburst pattern, which works better than region segmentation when
+    spokes connect at the center.
+
+    Example:
+        >>> calibrator = RadialCalibrator(n_spokes=17)
+        >>> result = calibrator.calibrate("calibration_slide.tif")
+        >>> print(f"R-squared: {result.r_squared:.4f}")
+        >>> result.save("calibration.npz")
+    """
+
+    def __init__(
+        self,
+        n_spokes: int = 16,
+        radius_inner: int = 30,
+        radius_outer: int = 150,
+        saturation_threshold: float = 0.2,
+        value_threshold: float = 0.2,
+        min_samples_per_angle: int = 5,
+        rotation_search_degrees: float = 5.0,
+    ):
+        """Initialize the radial calibrator.
+
+        Args:
+            n_spokes: Number of unique orientations in the sunburst (default 16).
+                      This gives 17 spokes from horizontal to horizontal INCLUDING
+                      both endpoints. Angles sampled at 180/n_spokes = 11.25° intervals.
+            radius_inner: Inner radius to start sampling (pixels from center)
+            radius_outer: Outer radius to stop sampling
+            saturation_threshold: Minimum saturation to sample a pixel
+            value_threshold: Minimum value (brightness) to sample a pixel
+            min_samples_per_angle: Minimum samples needed for a valid angle
+            rotation_search_degrees: Search range (±) in degrees to find spoke centers
+        """
+        self.n_spokes = n_spokes
+        self.radius_inner = radius_inner
+        self.radius_outer = radius_outer
+        self.saturation_threshold = saturation_threshold
+        self.value_threshold = value_threshold
+        self.min_samples_per_angle = min_samples_per_angle
+        self.rotation_search_degrees = rotation_search_degrees
+
+    def calibrate(
+        self,
+        image_path: Union[str, Path],
+        center: Optional[Tuple[int, int]] = None,
+        debug_plot: bool = False,
+        roi: Optional[Tuple[int, int, int, int]] = None,
+    ) -> RadialCalibrationResult:
+        """Perform radial calibration on a sunburst slide image.
+
+        Args:
+            image_path: Path to calibration slide image
+            center: Optional (y, x) center coordinates. If None, auto-detected.
+            debug_plot: If True, show debug visualization
+            roi: Optional region of interest (y1, y2, x1, x2) to restrict search
+
+        Returns:
+            RadialCalibrationResult with regression model and data
+        """
+        # Load image (normalized to uint8)
+        image = self._load_image(image_path)
+
+        # Also load raw image for saturation checking
+        raw_image = self._load_raw_image(image_path)
+
+        # Convert to HSV
+        hsv = color.rgb2hsv(image)
+        hue = hsv[:, :, 0]
+        saturation = hsv[:, :, 1]
+        value = hsv[:, :, 2]
+
+        # Auto-detect center if not provided
+        if center is None:
+            center = self._find_center(saturation, value, roi, image=image)
+
+        # Sample along radial lines (finds optimal rotation to hit spoke centers)
+        samples, rotation = self._radial_sample(hue, saturation, value, center)
+
+        if len(samples) < 3:
+            raise ValueError(
+                f"Only {len(samples)} valid angles found. Need at least 3 for regression."
+            )
+
+        # Check for saturation and other issues
+        warnings = self._check_saturation(raw_image, samples, center, rotation)
+
+        # Fit regression
+        result = self._fit_regression(samples, center, rotation, warnings)
+
+        if debug_plot:
+            self._plot_debug(image, hue, samples, result, center, rotation)
+
+        return result
+
+    def _load_image(self, path: Union[str, Path]) -> np.ndarray:
+        """Load image from file."""
+        path = Path(path)
+
+        if not path.exists():
+            raise FileNotFoundError(f"Image not found: {path}")
+
+        try:
+            import tifffile
+            image = tifffile.imread(str(path))
+        except Exception:
+            image = imread(str(path))
+
+        # Handle multi-channel TIFF
+        if image.ndim == 3:
+            if image.shape[0] == 3 and image.shape[2] != 3:
+                image = np.moveaxis(image, 0, -1)
+            elif image.shape[2] == 4:
+                image = image[:, :, :3]
+        elif image.ndim == 2:
+            image = np.stack([image] * 3, axis=-1)
+
+        if image.dtype != np.uint8:
+            if image.max() <= 1.0:
+                image = (image * 255).astype(np.uint8)
+            else:
+                image = image.astype(np.uint8)
+
+        return image
+
+    def _load_raw_image(self, path: Union[str, Path]) -> np.ndarray:
+        """Load raw image without normalization for saturation checking."""
+        path = Path(path)
+
+        try:
+            import tifffile
+            image = tifffile.imread(str(path))
+        except Exception:
+            image = imread(str(path))
+
+        # Handle multi-channel TIFF
+        if image.ndim == 3:
+            if image.shape[0] == 3 and image.shape[2] != 3:
+                image = np.moveaxis(image, 0, -1)
+            elif image.shape[2] == 4:
+                image = image[:, :, :3]
+        elif image.ndim == 2:
+            image = np.stack([image] * 3, axis=-1)
+
+        return image
+
+    def _check_saturation(
+        self,
+        raw_image: np.ndarray,
+        samples: List[RadialSample],
+        center: Tuple[int, int],
+        rotation: float,
+    ) -> List[str]:
+        """Check for pixel saturation and other issues along sampling lines.
+
+        Returns:
+            List of warning messages
+        """
+        warnings = []
+        cy, cx = center
+        h, w = raw_image.shape[:2]
+
+        # Determine max value based on dtype
+        if raw_image.dtype == np.uint8:
+            max_val = 255
+        elif raw_image.dtype == np.uint16:
+            max_val = 65535
+        else:
+            max_val = raw_image.max()
+
+        total_sampled = 0
+        saturated_count = 0
+        saturated_by_channel = {'R': 0, 'G': 0, 'B': 0}
+
+        base_angles = np.linspace(0, 180, self.n_spokes, endpoint=False)
+
+        for angle in base_angles:
+            rotated_angle = angle + rotation
+            angle_rad = np.radians(rotated_angle)
+
+            for r in range(self.radius_inner, self.radius_outer, 2):
+                x = int(cx + r * np.cos(angle_rad))
+                y = int(cy - r * np.sin(angle_rad))
+
+                if 0 <= y < h and 0 <= x < w:
+                    total_sampled += 1
+                    pixel = raw_image[y, x]
+
+                    if pixel[0] >= max_val:
+                        saturated_by_channel['R'] += 1
+                    if pixel[1] >= max_val:
+                        saturated_by_channel['G'] += 1
+                    if pixel[2] >= max_val:
+                        saturated_by_channel['B'] += 1
+
+                    if np.any(pixel >= max_val):
+                        saturated_count += 1
+
+        # Add saturation warnings
+        if saturated_count > 0:
+            pct = 100 * saturated_count / total_sampled
+            warnings.append(
+                f"SATURATION: {saturated_count}/{total_sampled} pixels ({pct:.1f}%) "
+                f"are saturated (R:{saturated_by_channel['R']}, "
+                f"G:{saturated_by_channel['G']}, B:{saturated_by_channel['B']})"
+            )
+
+        # Check for spokes with low sample count or high variance
+        expected_samples = (self.radius_outer - self.radius_inner) // 2
+        for sample in samples:
+            if sample.n_samples < expected_samples * 0.6:
+                warnings.append(
+                    f"LOW_SAMPLES: Angle {sample.angle:.1f}° has only {sample.n_samples} "
+                    f"samples (expected ~{expected_samples}). Spoke may be faded/missing."
+                )
+            if sample.hue_std > 0.1:
+                warnings.append(
+                    f"HIGH_VARIANCE: Angle {sample.angle:.1f}° has hue std={sample.hue_std:.3f}. "
+                    f"Measurement may be unreliable."
+                )
+
+        return warnings
+
+    def _find_center(
+        self,
+        saturation: np.ndarray,
+        value: np.ndarray,
+        roi: Optional[Tuple[int, int, int, int]] = None,
+        image: Optional[np.ndarray] = None,
+    ) -> Tuple[int, int]:
+        """Auto-detect the center of the sunburst pattern.
+
+        Uses mode-based background detection: finds the most common pixel color
+        (background), then identifies foreground pixels as those differing
+        significantly from the background. The sunburst is identified as the
+        leftmost large connected component.
+
+        Args:
+            saturation: Saturation channel
+            value: Value channel
+            roi: Optional (y1, y2, x1, x2) to restrict search
+            image: Optional RGB image for mode-based detection (preferred)
+
+        Returns:
+            (y, x) center coordinates
+        """
+        # Try mode-based detection if we have the RGB image
+        if image is not None:
+            center = self._find_center_mode_based(image, roi)
+            if center is not None:
+                return center
+
+        # Fall back to saturation-based detection
+        return self._find_center_saturation_based(saturation, value, roi)
+
+    def _find_center_mode_based(
+        self,
+        image: np.ndarray,
+        roi: Optional[Tuple[int, int, int, int]] = None,
+    ) -> Optional[Tuple[int, int]]:
+        """Find center using mode-based background detection.
+
+        This method works well when ~90%+ of the image is background, and
+        the sunburst is the leftmost large foreground structure.
+
+        Args:
+            image: RGB image
+            roi: Optional region of interest
+
+        Returns:
+            (y, x) center coordinates, or None if detection fails
+        """
+        # Find background color using mode (most common pixel value per channel)
+        r_mode = stats.mode(image[:, :, 0].flatten(), keepdims=False).mode
+        g_mode = stats.mode(image[:, :, 1].flatten(), keepdims=False).mode
+        b_mode = stats.mode(image[:, :, 2].flatten(), keepdims=False).mode
+        background = np.array([r_mode, g_mode, b_mode], dtype=np.float64)
+
+        # Calculate distance from background for each pixel
+        diff = np.sqrt(np.sum((image.astype(np.float64) - background) ** 2, axis=2))
+
+        # Threshold to find non-background pixels (30 is a reasonable default)
+        foreground_threshold = 30
+        foreground = diff > foreground_threshold
+
+        # Apply ROI if provided
+        if roi is not None:
+            y1, y2, x1, x2 = roi
+            roi_mask = np.zeros_like(foreground)
+            roi_mask[y1:y2, x1:x2] = foreground[y1:y2, x1:x2]
+            foreground = roi_mask
+
+        # Check if we have enough foreground
+        if np.sum(foreground) < 1000:
+            return None
+
+        # Find connected components
+        labeled, n_labels = ndimage.label(foreground)
+        if n_labels == 0:
+            return None
+
+        # Get region properties
+        regions = measure.regionprops(labeled)
+
+        # Filter for large components (area > 10000 pixels)
+        min_area = 10000
+        large_regions = [r for r in regions if r.area > min_area]
+
+        if not large_regions:
+            # Try with smaller threshold
+            min_area = 1000
+            large_regions = [r for r in regions if r.area > min_area]
+
+        if not large_regions:
+            return None
+
+        # Sort by leftmost position (min_col from bounding box)
+        # bbox = (min_row, min_col, max_row, max_col)
+        large_regions_sorted = sorted(large_regions, key=lambda r: r.bbox[1])
+
+        # The sunburst should be the leftmost large component
+        sunburst = large_regions_sorted[0]
+        center_y = int(sunburst.centroid[0])
+        center_x = int(sunburst.centroid[1])
+
+        return (center_y, center_x)
+
+    def _find_center_saturation_based(
+        self,
+        saturation: np.ndarray,
+        value: np.ndarray,
+        roi: Optional[Tuple[int, int, int, int]] = None,
+    ) -> Tuple[int, int]:
+        """Find center using saturation-based detection (fallback method).
+
+        Args:
+            saturation: Saturation channel
+            value: Value channel
+            roi: Optional region of interest
+
+        Returns:
+            (y, x) center coordinates
+        """
+        # Create foreground mask
+        mask = (saturation > self.saturation_threshold) & (value > self.value_threshold)
+
+        # Apply ROI if provided
+        if roi is not None:
+            y1, y2, x1, x2 = roi
+            roi_mask = np.zeros_like(mask)
+            roi_mask[y1:y2, x1:x2] = mask[y1:y2, x1:x2]
+            mask = roi_mask
+
+        # Check if we have any foreground
+        if not mask.any():
+            # Fall back to image center
+            return (saturation.shape[0] // 2, saturation.shape[1] // 4)
+
+        # Label connected components
+        labeled, num_features = ndimage.label(mask)
+
+        if num_features == 0:
+            return (saturation.shape[0] // 2, saturation.shape[1] // 4)
+
+        # Find largest connected component
+        component_sizes = ndimage.sum(mask, labeled, range(1, num_features + 1))
+        largest_component = np.argmax(component_sizes) + 1
+
+        # Get bounding box of largest component
+        largest_mask = labeled == largest_component
+        rows = np.any(largest_mask, axis=1)
+        cols = np.any(largest_mask, axis=0)
+        row_indices = np.where(rows)[0]
+        col_indices = np.where(cols)[0]
+
+        # Bounding box dimensions
+        y_min, y_max = row_indices[0], row_indices[-1]
+        x_min, x_max = col_indices[0], col_indices[-1]
+        bbox_height = y_max - y_min
+        bbox_width = x_max - x_min
+
+        # The sunburst is circular, so the diameter equals the height
+        diameter = bbox_height
+
+        # Center y is the middle of the vertical extent
+        center_y = (y_min + y_max) // 2
+
+        # Center x: if width >> height, gratings are included on the right
+        if bbox_width > bbox_height * 1.2:
+            center_x = x_min + diameter // 2
+        else:
+            center_x = (x_min + x_max) // 2
+
+        return (int(center_y), int(center_x))
+
+    def _radial_sample(
+        self,
+        hue: np.ndarray,
+        saturation: np.ndarray,
+        value: np.ndarray,
+        center: Tuple[int, int],
+    ) -> Tuple[List[RadialSample], float]:
+        """Sample hue values along radial lines at spoke centers.
+
+        Finds the optimal rotation offset that maximizes saturation (indicating
+        we're sampling the center of spokes rather than the gray gaps).
+
+        Args:
+            hue: Hue channel (0-1)
+            saturation: Saturation channel
+            value: Value channel
+            center: (y, x) center coordinates
+
+        Returns:
+            Tuple of (List of RadialSample objects, optimal rotation in degrees)
+        """
+        center_y, center_x = center
+        h, w = hue.shape
+
+        # Base angles at spoke centers (180/n_spokes spacing)
+        base_angles = np.linspace(0, 180, self.n_spokes, endpoint=False)
+
+        # Search for optimal rotation
+        best_rotation = 0.0
+        best_total_saturation = -1
+
+        rotation_steps = np.linspace(
+            -self.rotation_search_degrees,
+            self.rotation_search_degrees,
+            21  # Test 21 rotations within range
+        )
+
+        for rotation in rotation_steps:
+            total_saturation = 0
+            for angle in base_angles:
+                rotated_angle = angle + rotation
+                angle_rad = np.radians(rotated_angle)
+
+                for r in range(self.radius_inner, self.radius_outer, 2):
+                    x = int(center_x + r * np.cos(angle_rad))
+                    y = int(center_y - r * np.sin(angle_rad))
+
+                    if 0 <= y < h and 0 <= x < w:
+                        if value[y, x] > self.value_threshold:
+                            total_saturation += saturation[y, x]
+
+            if total_saturation > best_total_saturation:
+                best_total_saturation = total_saturation
+                best_rotation = rotation
+
+        # Now sample at the optimal rotation
+        samples = []
+        for angle in base_angles:
+            rotated_angle = angle + best_rotation
+            angle_rad = np.radians(rotated_angle)
+
+            hue_samples = []
+
+            for r in range(self.radius_inner, self.radius_outer, 2):
+                x = int(center_x + r * np.cos(angle_rad))
+                y = int(center_y - r * np.sin(angle_rad))
+
+                if 0 <= y < h and 0 <= x < w:
+                    if (saturation[y, x] > self.saturation_threshold and
+                        value[y, x] > self.value_threshold):
+                        hue_samples.append(hue[y, x])
+
+            if len(hue_samples) >= self.min_samples_per_angle:
+                sample = RadialSample(
+                    angle=rotated_angle,  # Use the rotated angle
+                    hue_mean=np.mean(hue_samples),
+                    hue_std=np.std(hue_samples),
+                    n_samples=len(hue_samples),
+                )
+                samples.append(sample)
+
+        return samples, best_rotation
+
+    def _fit_regression(
+        self,
+        samples: List[RadialSample],
+        center: Tuple[int, int],
+        rotation: float = 0.0,
+        warnings: List[str] = None,
+    ) -> RadialCalibrationResult:
+        """Fit linear regression between angles and hue values.
+
+        Handles hue wrapping by finding the optimal offset that produces
+        the best linear fit. Since hue wraps at 1.0, data may be split
+        into two groups that need to be unwrapped for proper fitting.
+        """
+        if warnings is None:
+            warnings = []
+        angles = np.array([s.angle for s in samples])
+        hue_values_raw = np.array([s.hue_mean for s in samples])
+
+        # Find optimal hue offset by testing multiple values
+        best_r_squared = -1
+        best_offset = 0
+        best_coeffs = None
+
+        for offset in np.linspace(0, 1, 50, endpoint=False):
+            # Shift hue values by offset and wrap to [0, 1]
+            hue_shifted = (hue_values_raw - offset) % 1.0
+
+            # Fit: angle = m * hue + b
+            coeffs = np.polyfit(hue_shifted, angles, 1)
+
+            # Calculate R²
+            predicted = np.polyval(coeffs, hue_shifted)
+            ss_res = np.sum((angles - predicted) ** 2)
+            ss_tot = np.sum((angles - np.mean(angles)) ** 2)
+            r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+
+            if r_squared > best_r_squared:
+                best_r_squared = r_squared
+                best_offset = offset
+                best_coeffs = coeffs
+
+        # Apply best offset
+        hue_values = (hue_values_raw - best_offset) % 1.0
+        inv_slope = best_coeffs[0]
+        inv_intercept = best_coeffs[1]
+        r_squared = best_r_squared
+
+        # Fit inverse: hue = m * angle + b (using shifted hue values)
+        inv_coeffs = np.polyfit(angles, hue_values, 1)
+        slope = inv_coeffs[0]
+        intercept = inv_coeffs[1]
+
+        return RadialCalibrationResult(
+            slope=slope,
+            intercept=intercept,
+            inv_slope=inv_slope,
+            inv_intercept=inv_intercept,
+            r_squared=r_squared,
+            hue_offset=best_offset,
+            angles=angles,
+            hue_values=hue_values,
+            samples=samples,
+            center=center,
+            warnings=warnings,
+            rotation=rotation,
+        )
+
+    def _plot_debug(
+        self,
+        image: np.ndarray,
+        hue: np.ndarray,
+        samples: List[RadialSample],
+        result: RadialCalibrationResult,
+        center: Tuple[int, int],
+        rotation: float = 0.0,
+    ) -> None:
+        """Create debug visualization with ROYGBIV color indicators."""
+        fig = plt.figure(figsize=(15, 6))
+
+        # Left: Original image with sampling lines
+        ax1 = fig.add_subplot(1, 3, 1)
+        ax1.imshow(image)
+        cy, cx = center
+        ax1.plot(cx, cy, 'w+', markersize=20, markeredgewidth=3)
+
+        for sample in samples:
+            angle_rad = np.radians(sample.angle)
+            x_end = cx + self.radius_outer * np.cos(angle_rad)
+            y_end = cy - self.radius_outer * np.sin(angle_rad)
+            ax1.plot([cx, x_end], [cy, y_end], 'w-', alpha=0.5, linewidth=1)
+
+        ax1.set_title(f"Radial Sampling ({len(samples)} spokes, rot={rotation:.1f}°)")
+        ax1.axis('off')
+
+        # Middle: Hue channel
+        ax2 = fig.add_subplot(1, 3, 2)
+        ax2.imshow(hue, cmap='hsv')
+        ax2.plot(cx, cy, 'k+', markersize=20, markeredgewidth=3)
+        ax2.set_title("Hue Channel")
+        ax2.axis('off')
+
+        # Right: Scatter plot with color-coded points and shifted colorbar
+        ax3 = fig.add_subplot(1, 3, 3)
+
+        # Get raw hue values for each sample to determine point colors
+        raw_hue_values = np.array([s.hue_mean for s in samples])
+
+        # Create color array from raw hue values (for visual appearance)
+        point_colors = np.zeros((len(samples), 3))
+        for i, raw_hue in enumerate(raw_hue_values):
+            # Convert hue to RGB for point color
+            hsv_color = np.array([[[raw_hue, 1.0, 1.0]]])
+            rgb_color = mcolors.hsv_to_rgb(hsv_color)[0, 0]
+            point_colors[i] = rgb_color
+
+        # Check which angles have saturation issues
+        saturated_angles = set()
+        if result.warnings:
+            for warning in result.warnings:
+                if "SATURATION" in warning:
+                    # Mark all angles as potentially affected
+                    for sample in samples:
+                        saturated_angles.add(sample.angle)
+
+        # Plot points with colors matching their actual hue
+        # Use circles for normal points, X for saturated
+        for i, (shifted_hue, angle) in enumerate(zip(result.hue_values, result.angles)):
+            marker = 'X' if samples[i].angle in saturated_angles else 'o'
+            edge_color = 'red' if samples[i].angle in saturated_angles else 'black'
+            ax3.scatter(
+                shifted_hue, angle,
+                s=100,
+                c=[point_colors[i]],
+                edgecolors=edge_color,
+                linewidths=2,
+                marker=marker,
+                zorder=5
+            )
+
+        # Plot regression line using SHIFTED hue values (matching X axis)
+        hue_line = np.linspace(0, 1, 100)
+        # The regression is: angle = inv_slope * shifted_hue + inv_intercept
+        predicted_angles = result.inv_slope * hue_line + result.inv_intercept
+        ax3.plot(hue_line, predicted_angles, 'r-', linewidth=2,
+                label=f'R²={result.r_squared:.4f}')
+
+        ax3.set_xlabel("Shifted Hue Value")
+        ax3.set_ylabel("Angle (degrees)")
+        ax3.set_title(f"Radial Calibration: R²={result.r_squared:.4f}")
+        ax3.legend(loc='best')
+        ax3.grid(True, alpha=0.3)
+        ax3.set_xlim(0, 1)
+        ax3.set_ylim(0, 180)
+
+        # Add shifted rainbow colorbar below the plot
+        self._add_shifted_hue_colorbar(ax3, result.hue_offset)
+
+        plt.tight_layout()
+        plt.subplots_adjust(bottom=0.15)  # Make room for colorbar
+        plt.show()
+
+    def _add_shifted_hue_colorbar(self, ax, hue_offset: float) -> None:
+        """Add a rainbow colorbar shifted by hue_offset.
+
+        Args:
+            ax: Matplotlib axes
+            hue_offset: Hue offset to shift the colorbar
+        """
+        # Get axis position
+        pos = ax.get_position()
+
+        # Create a new axes for the colorbar below the plot
+        cbar_ax = ax.figure.add_axes([pos.x0, pos.y0 - 0.06, pos.width, 0.02])
+
+        # Create SHIFTED hue gradient (matching the X axis which shows shifted values)
+        gradient = np.linspace(0, 1, 256).reshape(1, -1)
+        hsv = np.zeros((1, 256, 3))
+        # Shift the hue values back by offset to show actual colors at shifted positions
+        hsv[0, :, 0] = (gradient + hue_offset) % 1.0
+        hsv[0, :, 1] = 1.0
+        hsv[0, :, 2] = 1.0
+        rgb = mcolors.hsv_to_rgb(hsv)
+
+        cbar_ax.imshow(rgb, aspect='auto', extent=[0, 1, 0, 1])
+        cbar_ax.set_xlim(0, 1)
+        cbar_ax.set_xticks([])
+        cbar_ax.set_yticks([])
+
+        # Add shifted ROYGBIV labels
+        for hue, letter, color_name in ROYGBIV_COLORS:
+            # Shift the label position
+            shifted_pos = (hue - hue_offset) % 1.0
+            cbar_ax.text(shifted_pos, -0.5, letter, ha='center', va='top',
+                        fontsize=9, fontweight='bold', color='black')
+
+
+def calibrate_radial(
+    image_path: Union[str, Path],
+    n_spokes: int = 17,
+    debug: bool = False,
+) -> RadialCalibrationResult:
+    """Convenience function for radial calibration.
+
+    Args:
+        image_path: Path to calibration slide image
+        n_spokes: Number of spokes in the sunburst pattern
+        debug: Show debug plot
+
+    Returns:
+        RadialCalibrationResult
+    """
+    calibrator = RadialCalibrator(n_spokes=n_spokes)
+    return calibrator.calibrate(image_path, debug_plot=debug)

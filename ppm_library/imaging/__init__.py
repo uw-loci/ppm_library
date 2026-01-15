@@ -1,27 +1,46 @@
 """
 Imaging package - General image processing utilities.
 
-This package contains image processing functionality that is
-NOT specific to any particular modality (PPM, brightfield, etc).
+This package contains image processing functionality including:
+- Background/flatfield correction
+- TIFF writing with metadata
+- PPM image loading and angle extraction
+- Hue correction and preprocessing
 
 Modules:
     background: Background correction utilities (BackgroundCorrectionUtils)
     writer: TIFF writing utilities (TifWriterUtils)
-    jai_calibration: JAI camera white balance calibration (JAIWhiteBalanceCalibrator)
+    ppm_image: PPM image loading and angle extraction (PPMImage, AngleMap)
+    hue_correction: Hue correction and preprocessing utilities
+
+Note:
+    JAI camera calibration has been moved to the microscope_control.jai package.
+    Import from there: from microscope_control.jai import JAIWhiteBalanceCalibrator, JAICameraProperties
 """
 
 from ppm_library.imaging.writer import TifWriterUtils
 from ppm_library.imaging.background import BackgroundCorrectionUtils
+from ppm_library.imaging.ppm_image import PPMImage, AngleMap, load_ppm_image
+from ppm_library.imaging.hue_correction import (
+    hue_shift,
+    compute_hue_shift_from_reference,
+    apply_gaussian_smoothing,
+    apply_median_filter,
+    preprocess_ppm_image,
+)
 
-__all__ = ["TifWriterUtils", "BackgroundCorrectionUtils"]
-
-# Optional: JAI calibration (may not be needed on all systems)
-try:
-    from ppm_library.imaging.jai_calibration import (
-        JAIWhiteBalanceCalibrator,
-        WhiteBalanceResult,
-        CalibrationConfig,
-    )
-    __all__.extend(["JAIWhiteBalanceCalibrator", "WhiteBalanceResult", "CalibrationConfig"])
-except ImportError:
-    pass
+__all__ = [
+    # Existing
+    "TifWriterUtils",
+    "BackgroundCorrectionUtils",
+    # PPM image processing
+    "PPMImage",
+    "AngleMap",
+    "load_ppm_image",
+    # Hue correction
+    "hue_shift",
+    "compute_hue_shift_from_reference",
+    "apply_gaussian_smoothing",
+    "apply_median_filter",
+    "preprocess_ppm_image",
+]

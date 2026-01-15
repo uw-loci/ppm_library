@@ -1,31 +1,34 @@
 # PPM Library
 
-Image processing library for polarized light microscopy (PPM) and general microscopy imaging.
+Unified library for polarized light microscopy (PPM) - acquisition support and image analysis.
 
 > **Part of the QPSC (QuPath Scope Control) system**
 > For complete installation instructions, see: https://github.com/uw-loci/QPSC
 >
-> **Note:** This library can also be used standalone for general microscopy image processing.
+> **Note:** This library can also be used standalone for general microscopy image processing and PPM analysis.
 
 ## Features
 
-- **PPM Processing**: Polarizer calibration, birefringence analysis, rotation sensitivity diagnostics
-- **Image Processing**: Background correction, flatfield correction, tissue detection
+### Acquisition Support
+- **Hardware Polarizer Calibration**: Find crossed polarizer positions
+- **PPM Rotation Testing**: Sensitivity testing and birefringence analysis
+- **Background Correction**: Flatfield correction utilities
 - **Debayering**: CPU and GPU-based Bayer pattern demosaicing
-- **Camera Calibration**: JAI camera white balance calibration
 - **TIFF I/O**: TIFF writing with metadata support
+
+### Image Analysis
+- **Hue-to-Angle Calibration**: Extract fiber angles from PPM images using sunburst calibration slides
+- **PPM Image Loading**: Load and analyze PPM images with HSV extraction
+- **Fiber Angle Extraction**: Convert hue values to fiber orientation angles (0-180 degrees)
+- **White Balance Correction**: Hue shifting and preprocessing
+- **Complete Analysis Workflows**: End-to-end PPM analysis with masking and statistics
 
 ## Installation
 
-**Part of [QPSC (QuPath Scope Control)](https://github.com/uw-loci/QPSC)**
-
 **Requirements:**
-- Python 3.9 or later
+- Python 3.10 or later
 - pip (Python package installer)
 - Git (for `pip install git+https://...` commands)
-
-This library has no dependencies on other QPSC packages and can be used standalone.
-See the [QPSC Installation Guide](https://github.com/uw-loci/QPSC#automated-installation-windows) for complete QPSC setup.
 
 ### Quick Install (from GitHub)
 
@@ -44,62 +47,15 @@ pip install "git+https://github.com/uw-loci/ppm_library.git#egg=ppm-library[gpu]
 ```bash
 git clone https://github.com/uw-loci/ppm_library.git
 cd ppm_library
-pip install -e .
-
-# Or with GPU support:
-pip install -e ".[gpu]"
+pip install -e ".[dev]"
 ```
-
-**For automated setup**, use the [QPSC setup script](https://github.com/uw-loci/QPSC/blob/main/PPM-QuPath.ps1).
-
-### Troubleshooting Installation
-
-#### Problem: `ModuleNotFoundError: No module named 'ppm_library'`
-
-**Cause:** Editable install issue with package structure.
-
-**Solution:**
-
-The repository has been updated to fix this issue. If you encounter this error:
-
-1. **Update to latest version:**
-   ```bash
-   cd ppm_library
-   git pull
-   ```
-
-2. **Verify `pyproject.toml` has the correct configuration:**
-   ```toml
-   [tool.hatch.build.targets.wheel]
-   packages = ["."]
-   ```
-
-3. **Reinstall in editable mode:**
-   ```bash
-   pip install -e . --force-reinstall --no-deps
-   ```
-
-4. **Verify installation:**
-   ```bash
-   pip show ppm-library
-   ```
-
-#### Problem: Circular dependency error
-
-**Symptom:** Error importing `EmptyRegionDetector` from `microscope_control`
-
-**Solution:** This has been fixed in the latest version. The problematic import has been removed from `__init__.py` to maintain standalone design. If needed, import directly:
-```python
-from microscope_control.autofocus.tissue_detection import EmptyRegionDetector
-```
-
-For more troubleshooting, see the [QPSC Installation Guide](https://github.com/uw-loci/QPSC#troubleshooting-python-package-installation).
 
 ## Quick Start
 
+### Acquisition Support
+
 ```python
-from ppm_library.imaging.background import BackgroundCorrectionUtils
-from ppm_library.debayering import CPUDebayer
+from ppm_library import BackgroundCorrectionUtils, CPUDebayer
 
 # Background correction
 corrector = BackgroundCorrectionUtils()
@@ -110,36 +66,107 @@ debayer = CPUDebayer(pattern='RGGB')
 rgb_image = debayer.debayer(bayer_image)
 ```
 
+### Image Analysis - Fiber Angle Extraction
+
+```python
+from ppm_library import RadialCalibrator, PPMImage
+
+# Step 1: Create calibration from sunburst slide
+calibrator = RadialCalibrator(n_spokes=16)
+calibration = calibrator.calibrate("sunburst_slide.tif", debug_plot=True)
+
+# Save calibration for later use
+calibration.save("my_calibration.npz")
+
+# Step 2: Load PPM sample image
+ppm_image = PPMImage.load("sample.tif")
+
+# Step 3: Convert to fiber angles
+angle_map = ppm_image.to_angle_map(calibration)
+
+# Step 4: Analyze results
+from ppm_library import analyze_ppm
+
+result = analyze_ppm(
+    calibration_input="my_calibration.npz",
+    ppm_image_path="sample.tif",
+    mask_image_path="tissue_mask.tif",
+    threshold=128  # Analyze bright regions of mask
+)
+
+result.print_summary()
+# PPM Analysis Results
+# ========================================
+# Valid pixels analyzed: 125,432
+# Mean fiber angle: 45.23 degrees
+# Std deviation: 12.87 degrees
+# Calibration R-squared: 0.9876
+```
+
+### Hue Correction (White Balance)
+
+```python
+from ppm_library import hue_shift, compute_hue_shift_from_reference
+
+# Correct white balance by shifting hue
+corrected = hue_shift(image, angle_degrees=15.0)
+
+# Or compute shift automatically from a known reference
+shift, measured_hue = compute_hue_shift_from_reference(
+    image,
+    reference_angle=45.0,  # Known fiber angle in ROI
+    roi_mask=reference_roi
+)
+corrected = hue_shift(image, shift)
+```
+
+## Module Reference
+
+### `ppm_library.ppm` - Hardware/Acquisition Support
+- `PolarizerCalibrationUtils` - Find crossed polarizer positions
+- `PPMRotationSensitivityTester` - Test PPM rotation precision
+- `PPMBirefringenceMaximizationTester` - Optimize birefringence signal
+
+### `ppm_library.calibration` - Hue-to-Angle Calibration
+- `RadialCalibrator` - Radial sampling for connected sunburst patterns (recommended)
+- `SunburstCalibrator` - Region-based segmentation for separated rectangles
+- `RadialCalibrationResult` - Calibration data with hue_to_angle() method
+- `HistogramCalibration` - Correct optical anisotropy in hue histograms
+- `compute_hue_histogram()` - Compute hue histogram from RGB image
+
+### `ppm_library.imaging` - Image Processing
+- `PPMImage` - Container for PPM image data with HSV extraction
+- `AngleMap` - Fiber angle extraction results with analysis methods
+- `load_ppm_image()` - Convenience function to load PPM images
+- `hue_shift()` - White balance correction by shifting hue
+- `compute_hue_shift_from_reference()` - Auto white balance from reference
+- `preprocess_ppm_image()` - Standard Gaussian + median preprocessing
+- `BackgroundCorrectionUtils` - Flatfield correction
+- `TifWriterUtils` - TIFF writing with metadata
+
+### `ppm_library.analysis` - Complete Workflows
+- `analyze_ppm()` - Complete workflow for PPM image analysis
+- `PPMAnalysisResult` - Analysis results with statistics and visualization
+
+### `ppm_library.debayering` - Bayer Demosaicing
+- `CPUDebayer` - CPU-based Bayer pattern demosaicing
+- `GPUDebayer` - GPU-accelerated debayering (requires CuPy)
+
+## Migration from PSTACS ppmlibrary
+
+If you were using the PSTACS ppmlibrary, update your imports:
+
+| Old Import | New Import |
+|------------|-----------|
+| `from ppmlibrary import RadialCalibrator` | `from ppm_library import RadialCalibrator` |
+| `from ppmlibrary import PPMImage, AngleMap` | `from ppm_library import PPMImage, AngleMap` |
+| `from ppmlibrary import analyze_ppm` | `from ppm_library import analyze_ppm` |
+| `from ppmlibrary.calibration import ...` | `from ppm_library.calibration import ...` |
+| `from ppmlibrary.imaging import hue_shift` | `from ppm_library.imaging import hue_shift` |
+
 ## Testing
 
-This package includes two types of testing tools:
-
-### Hardware Diagnostic Tools
-
-PPM-specific diagnostic and calibration tools are located in the source modules:
-- **`ppm/birefringence_test.py`** - PPM birefringence maximization testing
-- **`ppm/sensitivity_test.py`** - PPM rotation sensitivity testing
-
-These tools are called from the QuPath QPSC extension GUI during PPM microscope setup. They:
-- Require live microscope hardware and server connection
-- Generate diagnostic plots, visualizations, and CSV data
-- Test PPM signal optimization and angular precision
-- Validate mechanical repeatability and intensity sensitivity
-
-**Not intended for automated CI/CD** - these are interactive diagnostic tools for hardware characterization.
-
 ### Automated Unit Tests
-
-Automated pytest-compatible unit tests are located in the `tests/` directory:
-- **`tests/test_debayering.py`** - Tests for Bayer pattern debayering (all 4 patterns)
-- **`tests/test_background_correction.py`** - Tests for flat-field correction and background detection
-
-These tests:
-- Run without hardware (use synthetic test images)
-- Can be integrated into CI/CD pipelines
-- Test pure-function image processing components
-
-**Running Unit Tests:**
 
 ```bash
 # Install dev dependencies
@@ -150,23 +177,32 @@ pytest
 
 # Run specific test file
 pytest tests/test_debayering.py
+pytest tests/test_sunburst.py
 
 # Run with coverage report
-pytest --cov=ppm --cov-report=html
-
-# View coverage report
-open htmlcov/index.html  # or xdg-open on Linux
+pytest --cov=ppm_library --cov-report=html
 ```
 
-**Test Coverage:**
+### Hardware Diagnostic Tools
 
-Current automated tests achieve ~70-80% coverage for testable components:
-- ✅ Debayering (all 4 Bayer patterns: RGGB, GRBG, GBRG, BGGR)
-- ✅ Background correction (flat-field division & subtraction methods)
-- ✅ Background mode detection
-- ⏸️ PPM calibration (requires hardware, use diagnostic tools)
-- ⏸️ Birefringence computation (complex - future HIGH priority test)
+PPM-specific diagnostic tools for hardware characterization:
+- `ppm/birefringence_test.py` - PPM birefringence maximization testing
+- `ppm/sensitivity_test.py` - PPM rotation sensitivity testing
+
+These are called from the QuPath QPSC extension GUI during microscope setup.
+
+## Examples
+
+See the `examples/` directory for complete examples:
+- `calibration_example.py` - Sunburst calibration demo
+- `create_phantom.py` - Create synthetic calibration phantoms for testing
 
 ## License
 
 MIT License
+
+## Authors
+
+- Mike Nelson (msnelson8@wisc.edu)
+- Bin Li (bli346@wisc.edu)
+- Jenu Chacko (jenu.chacko@wisc.edu)

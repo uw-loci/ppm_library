@@ -2,17 +2,21 @@
 PPM package - Polarized light microscopy (PPM) specific tools.
 
 This package contains all PPM-specific functionality including
-polarizer calibration, rotation sensitivity analysis, and
+hardware polarizer calibration, rotation sensitivity analysis, and
 birefringence processing.
 
+Note: This module handles HARDWARE polarizer calibration (finding crossed
+polarizer positions). For HUE-TO-ANGLE calibration (extracting fiber angles
+from PPM images), see ppm_library.calibration.
+
 Modules:
-    calibration: Polarizer calibration utilities (PolarizerCalibrationUtils)
+    polarizer_calibration: Hardware polarizer calibration (PolarizerCalibrationUtils)
     sensitivity_test: PPM rotation sensitivity testing (PPMRotationSensitivityTester)
     sensitivity_analysis: Rotation sensitivity analysis (PPMRotationAnalyzer)
     birefringence_test: Birefringence optimization (PPMBirefringenceMaximizationTester)
 """
 
-from ppm_library.ppm.calibration import PolarizerCalibrationUtils
+from ppm_library.ppm.polarizer_calibration import PolarizerCalibrationUtils
 
 __all__ = ["PolarizerCalibrationUtils"]
 
