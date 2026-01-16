@@ -7,6 +7,12 @@ Unified library for polarized light microscopy (PPM) - acquisition support and i
 >
 > **Note:** This library can also be used standalone for general microscopy image processing and PPM analysis.
 
+![PPM Fiber Angle Visualization](docs/images/angle_visualization.png)
+
+*Fiber orientation angles extracted from a PPM image - colors indicate fiber direction (0-180 degrees)*
+
+**[See the Complete Walkthrough with Examples](docs/WALKTHROUGH.md)**
+
 ## Features
 
 ### Acquisition Support
@@ -190,6 +196,28 @@ PPM-specific diagnostic tools for hardware characterization:
 - `ppm/sensitivity_test.py` - PPM rotation sensitivity testing
 
 These are called from the QuPath QPSC extension GUI during microscope setup.
+
+## Visual Workflow
+
+### 1. Calibration Slide
+
+Use a sunburst calibration slide with spokes at known orientations:
+
+![Calibration Phantom](docs/images/synthetic_calibration_phantom.png)
+
+### 2. Create Calibration Model
+
+The calibrator fits a linear regression between hue and angle:
+
+![Calibration Results](docs/images/calibration_updated.png)
+
+### 3. Extract Fiber Angles
+
+Apply calibration to PPM images to get fiber orientation angles:
+
+![Angle Map](docs/images/angle_map_demo.png)
+
+**For detailed instructions, see the [Complete Walkthrough](docs/WALKTHROUGH.md).**
 
 ## Examples
 
