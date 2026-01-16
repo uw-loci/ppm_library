@@ -212,9 +212,9 @@ plt.colorbar(label="Angle (degrees)")
 plt.savefig("angle_map.png")
 ```
 
-![Angle Map Demo](images/angle_map_demo.png)
+![Angle Map Demo](images/tissue_angle_map.png)
 
-*Example showing: (left) original PPM image, (middle) extracted angles, (right) RGB colormap visualization*
+*Example showing: (left) original PPM tissue image with fiber birefringence colors, (right) extracted fiber angles with rainbow colormap (0-180 degrees)*
 
 ---
 

@@ -7,9 +7,9 @@ Unified library for polarized light microscopy (PPM) - acquisition support and i
 >
 > **Note:** This library can also be used standalone for general microscopy image processing and PPM analysis.
 
-![PPM Analysis Workflow](docs/images/angle_map_demo.png)
+![PPM Analysis Workflow](docs/images/tissue_angle_map.png)
 
-*PPM workflow: Original tissue image (left) to extracted fiber orientation angles (right) - colors indicate fiber direction (0-180 degrees)*
+*PPM workflow: Original PPM tissue image (left) showing fiber birefringence colors, and extracted fiber orientation angles (right) - rainbow colormap indicates fiber direction (0-180 degrees)*
 
 **[See the Complete Walkthrough with Examples](docs/WALKTHROUGH.md)**
 
