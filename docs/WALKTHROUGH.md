@@ -57,7 +57,7 @@ A calibration slide contains a sunburst pattern where each spoke has a known fib
 
 ![Synthetic Calibration Phantom](images/synthetic_calibration_phantom.png)
 
-*Example synthetic calibration phantom with 16 spokes spanning 0-180 degrees*
+*Synthetic calibration phantom (generated with `create_phantom.py`) - real calibration slides have similar sunburst patterns with spokes at known orientations*
 
 ### Creating a Calibration
 

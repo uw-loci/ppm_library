@@ -158,18 +158,6 @@ corrected = hue_shift(image, shift)
 - `CPUDebayer` - CPU-based Bayer pattern demosaicing
 - `GPUDebayer` - GPU-accelerated debayering (requires CuPy)
 
-## Migration from PSTACS ppmlibrary
-
-If you were using the PSTACS ppmlibrary, update your imports:
-
-| Old Import | New Import |
-|------------|-----------|
-| `from ppmlibrary import RadialCalibrator` | `from ppm_library import RadialCalibrator` |
-| `from ppmlibrary import PPMImage, AngleMap` | `from ppm_library import PPMImage, AngleMap` |
-| `from ppmlibrary import analyze_ppm` | `from ppm_library import analyze_ppm` |
-| `from ppmlibrary.calibration import ...` | `from ppm_library.calibration import ...` |
-| `from ppmlibrary.imaging import hue_shift` | `from ppm_library.imaging import hue_shift` |
-
 ## Testing
 
 ### Automated Unit Tests
@@ -201,9 +189,9 @@ These are called from the QuPath QPSC extension GUI during microscope setup.
 
 ### 1. Calibration Slide
 
-Use a sunburst calibration slide with spokes at known orientations:
+Use a sunburst calibration slide with spokes at known orientations (synthetic phantom shown):
 
-![Calibration Phantom](docs/images/synthetic_calibration_phantom.png)
+![Synthetic Calibration Phantom](docs/images/synthetic_calibration_phantom.png)
 
 ### 2. Create Calibration Model
 
