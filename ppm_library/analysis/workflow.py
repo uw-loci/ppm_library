@@ -88,8 +88,8 @@ class PPMAnalysisResult:
         print("PPM Analysis Results")
         print("=" * 40)
         print(f"Valid pixels analyzed: {self.n_valid_pixels:,}")
-        print(f"Mean fiber angle: {self.mean_angle:.2f}°")
-        print(f"Std deviation: {self.std_angle:.2f}°")
+        print(f"Mean fiber angle: {self.mean_angle:.2f} deg")
+        print(f"Std deviation: {self.std_angle:.2f} deg")
         print(f"Calibration R²: {self.calibration.r_squared:.4f}")
         print(f"Histogram bins: {len(self.histogram_counts)}")
 
@@ -158,7 +158,7 @@ def analyze_ppm(
         n_spokes: Number of spokes in the calibration pattern (default 16).
             Only used if calibration_input is an image, not a .npz file.
         histogram_bins: Number of bins for the angle histogram (default 18,
-            giving 10° bins for the 0-180° range).
+            giving 10 deg bins for the 0-180 deg range).
         saturation_threshold: Minimum HSV saturation for valid pixels (0-1).
             Pixels below this threshold are excluded from analysis.
         value_threshold: Minimum HSV value (brightness) for valid pixels (0-1).
@@ -189,7 +189,7 @@ def analyze_ppm(
         ... )
         >>>
         >>> result.print_summary()
-        >>> print(f"Mean angle: {result.mean_angle:.1f}°")
+        >>> print(f"Mean angle: {result.mean_angle:.1f} deg")
     """
     calibration_input = Path(calibration_input)
     ppm_image_path = Path(ppm_image_path)

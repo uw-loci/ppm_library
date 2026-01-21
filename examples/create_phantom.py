@@ -4,8 +4,8 @@ Create a synthetic PPM calibration phantom image.
 
 This creates an image similar to a real calibration slide with:
 - A sunburst pattern with radial spokes at different orientations
-- Each spoke colored according to its orientation (full rainbow over 180°)
-- Opposite spokes (180° apart) have the same color (same fiber orientation)
+- Each spoke colored according to its orientation (full rainbow over 180 deg)
+- Opposite spokes (180 deg apart) have the same color (same fiber orientation)
 - Optional test gratings on the right side
 """
 
@@ -56,15 +56,15 @@ def create_calibration_phantom(
     cy = height // 2
 
     # Draw spokes - each orientation appears twice (opposite directions)
-    # n_spokes orientations over 180°, so 2*n_spokes total spokes over 360°
+    # n_spokes orientations over 180 deg, so 2*n_spokes total spokes over 360 deg
     for i in range(n_spokes * 2):
-        # Angle in the full 360° circle
+        # Angle in the full 360 deg circle
         angle_360 = i * 360.0 / (n_spokes * 2)
 
-        # Orientation angle (0-180°) - opposite spokes have same orientation
+        # Orientation angle (0-180 deg) - opposite spokes have same orientation
         orientation = angle_360 % 180.0
 
-        # Map orientation (0-180°) to hue (0-1)
+        # Map orientation (0-180 deg) to hue (0-1)
         # Full rainbow spread over 180 degrees
         hue = orientation / 180.0
 
@@ -196,7 +196,7 @@ def _add_gratings(
     # Line spacings for each grating (in pixels)
     spacings = [12, 8, 4]  # Grating 1, 2, 3
 
-    # Use a single orientation angle (e.g., 90° = vertical lines)
+    # Use a single orientation angle (e.g., 90 deg = vertical lines)
     # All gratings at same orientation so they have same hue
     orientation = 90.0
     hue = orientation / 180.0

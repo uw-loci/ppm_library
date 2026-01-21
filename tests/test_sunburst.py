@@ -287,13 +287,13 @@ class TestDuplicateMerging:
     def test_wrap_around_merge(self):
         """Test merging near 0/180 boundary.
 
-        Since fiber orientation is 0-180°, angles near 0° and 180° are actually
-        the same orientation (both horizontal). So 1° and 179° should merge.
+        Since fiber orientation is 0-180 deg, angles near 0 deg and 180 deg are actually
+        the same orientation (both horizontal). So 1 deg and 179 deg should merge.
         """
         cal = SunburstCalibrator(merge_duplicates=True, angle_tolerance=5.0)
 
-        # 1° and 179° are the same orientation (horizontal), should merge
-        # 90° is perpendicular, should stay separate
+        # 1 deg and 179 deg are the same orientation (horizontal), should merge
+        # 90 deg is perpendicular, should stay separate
         rectangles = [
             CalibrationRectangle(1, (100, 100), 1.0, 500, (200, 50, 50), 0.01, 0.01),
             CalibrationRectangle(2, (200, 200), 90.0, 500, (50, 200, 50), 0.25, 0.25),
@@ -302,7 +302,7 @@ class TestDuplicateMerging:
 
         merged = cal._merge_duplicate_angles(rectangles)
 
-        # 1° and 179° merge (both ~horizontal), 90° stays alone
+        # 1 deg and 179 deg merge (both ~horizontal), 90 deg stays alone
         assert len(merged) == 2
 
         # Check the merged angle is near 0 or 180 (average of 1 and 179 = 90,

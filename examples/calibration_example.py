@@ -103,7 +103,7 @@ def demo_with_synthetic():
     print("Creating synthetic PPM calibration phantom...")
     print("  - 17 orientations x 2 = 34 spokes")
     print("  - Paddle-shaped spokes (tapered)")
-    print("  - Full 180° rainbow hue spread")
+    print("  - Full 180 deg rainbow hue spread")
     print("  - 2x resolution (924x532, simulating 20x objective)")
     print()
 

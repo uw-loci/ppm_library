@@ -125,7 +125,7 @@ class PPMImage:
         >>>
         >>> # Convert to angle map
         >>> angle_map = ppm.to_angle_map(calibration)
-        >>> print(f"Mean angle: {angle_map.get_mean_angle_in_roi(roi_mask):.1f}°")
+        >>> print(f"Mean angle: {angle_map.get_mean_angle_in_roi(roi_mask):.1f} deg")
     """
 
     def __init__(

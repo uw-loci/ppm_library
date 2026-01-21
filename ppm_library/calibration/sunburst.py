@@ -166,8 +166,8 @@ class SunburstCalibrator:
 
         Args:
             n_expected_rectangles: Expected number of rectangles (default 16).
-                For a full 360° sunburst, this would be the total count (e.g., 16),
-                but since opposite directions are the same orientation (0-180°),
+                For a full 360 deg sunburst, this would be the total count (e.g., 16),
+                but since opposite directions are the same orientation (0-180 deg),
                 you'll have n_expected_rectangles/2 unique angles.
             min_area: Minimum pixel area for a valid rectangle
             saturation_threshold: Minimum saturation to be considered colored (not background)
@@ -350,8 +350,8 @@ class SunburstCalibrator:
     ) -> List[CalibrationRectangle]:
         """Merge rectangles with similar angles (e.g., opposite directions in sunburst).
 
-        In a 360° sunburst pattern, rectangles pointing in opposite directions
-        (e.g., up vs down) have the same orientation in the 0-180° range.
+        In a 360 deg sunburst pattern, rectangles pointing in opposite directions
+        (e.g., up vs down) have the same orientation in the 0-180 deg range.
         This function merges such duplicates by averaging their hue values.
 
         Args:
@@ -380,7 +380,7 @@ class SunburstCalibrator:
 
                 # Check if angles are within tolerance
                 angle_diff = abs(rect.angle - other.angle)
-                # Also check wrap-around (e.g., 179° and 1° are close)
+                # Also check wrap-around (e.g., 179 deg and 1 deg are close)
                 angle_diff = min(angle_diff, 180 - angle_diff)
 
                 if angle_diff <= self.angle_tolerance:

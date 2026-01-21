@@ -58,7 +58,7 @@ def hue_shift(
     hsv = color.rgb2hsv(image_float)
 
     # In PPM, hue spans 0-1 representing 0-180 degrees of fiber orientation
-    # (fibers are symmetric, so 0° and 180° are equivalent)
+    # (fibers are symmetric, so 0 deg and 180 deg are equivalent)
     # Shift: angle_degrees / 180.0 in hue units
     hue_shift_amount = angle_degrees / 180.0
 

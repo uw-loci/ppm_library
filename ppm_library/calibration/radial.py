@@ -239,13 +239,13 @@ class RadialCalibrator:
         Args:
             n_spokes: Number of unique orientations in the sunburst (default 16).
                       This gives 17 spokes from horizontal to horizontal INCLUDING
-                      both endpoints. Angles sampled at 180/n_spokes = 11.25° intervals.
+                      both endpoints. Angles sampled at 180/n_spokes = 11.25 deg intervals.
             radius_inner: Inner radius to start sampling (pixels from center)
             radius_outer: Outer radius to stop sampling
             saturation_threshold: Minimum saturation to sample a pixel
             value_threshold: Minimum value (brightness) to sample a pixel
             min_samples_per_angle: Minimum samples needed for a valid angle
-            rotation_search_degrees: Search range (±) in degrees to find spoke centers
+            rotation_search_degrees: Search range (+/-) in degrees to find spoke centers
         """
         self.n_spokes = n_spokes
         self.radius_inner = radius_inner
@@ -425,12 +425,12 @@ class RadialCalibrator:
         for sample in samples:
             if sample.n_samples < expected_samples * 0.6:
                 warnings.append(
-                    f"LOW_SAMPLES: Angle {sample.angle:.1f}° has only {sample.n_samples} "
+                    f"LOW_SAMPLES: Angle {sample.angle:.1f} deg has only {sample.n_samples} "
                     f"samples (expected ~{expected_samples}). Spoke may be faded/missing."
                 )
             if sample.hue_std > 0.1:
                 warnings.append(
-                    f"HIGH_VARIANCE: Angle {sample.angle:.1f}° has hue std={sample.hue_std:.3f}. "
+                    f"HIGH_VARIANCE: Angle {sample.angle:.1f} deg has hue std={sample.hue_std:.3f}. "
                     f"Measurement may be unreliable."
                 )
 
@@ -782,7 +782,7 @@ class RadialCalibrator:
             y_end = cy - self.radius_outer * np.sin(angle_rad)
             ax1.plot([cx, x_end], [cy, y_end], 'w-', alpha=0.5, linewidth=1)
 
-        ax1.set_title(f"Radial Sampling ({len(samples)} spokes, rot={rotation:.1f}°)")
+        ax1.set_title(f"Radial Sampling ({len(samples)} spokes, rot={rotation:.1f} deg)")
         ax1.axis('off')
 
         # Middle: Hue channel
