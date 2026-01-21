@@ -22,7 +22,12 @@ class TifWriterUtils:
         pass
 
     @staticmethod
-    def ome_writer(filename: str, pixel_size_um: float, data: np.ndarray):
+    def ome_writer(
+        filename: str,
+        pixel_size_um: float,
+        data: np.ndarray,
+        compression: Optional[str] = None,
+    ):
         """
         Write OME-TIFF file with metadata.
 
@@ -30,17 +35,24 @@ class TifWriterUtils:
             filename: Output filename
             pixel_size_um: Pixel size in micrometers
             data: Image data array
+            compression: Compression type (None, "lzw", "zlib", "deflate", etc.)
+                        None = uncompressed (default for scientific data compatibility)
+                        "lzw" requires the 'imagecodecs' package
+                        "zlib"/"deflate" work without additional dependencies
         """
         with tf.TiffWriter(filename) as tif:
-            # Use lossless compression for scientific imaging
-            # LZW works well for all bit depths and is widely compatible
-            # NEVER use JPEG for scientific data (lossy compression)
+            # Build options dict
             options = {
                 "photometric": "rgb" if len(data.shape) == 3 else "minisblack",
-                "compression": "lzw",  # Lossless compression for all data
                 "resolutionunit": "CENTIMETER",
                 "maxworkers": 2,
             }
+
+            # Only add compression if specified (None = uncompressed)
+            # NEVER use JPEG for scientific data (lossy compression)
+            if compression is not None:
+                options["compression"] = compression.lower()
+
             tif.write(
                 data,
                 resolution=(1e4 / pixel_size_um, 1e4 / pixel_size_um),
