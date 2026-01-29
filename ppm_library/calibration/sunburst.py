@@ -592,14 +592,14 @@ class SunburstCalibrator:
         ax1.set_title("Detected Rectangles with Angles")
         ax1.axis('off')
 
-        # Plot 2: Segmentation mask
+        # Plot 2: Black and white segmentation mask
         ax2 = axes[0, 1]
         mask_combined = np.zeros(image.shape[:2], dtype=np.float32)
         for rect in rectangles:
             if rect.mask is not None:
-                mask_combined[rect.mask] = rect.hue_mode
-        ax2.imshow(mask_combined, cmap='hsv')
-        ax2.set_title("Segmented Regions (colored by hue)")
+                mask_combined[rect.mask] = 1.0
+        ax2.imshow(mask_combined, cmap='gray', vmin=0, vmax=1)
+        ax2.set_title("Segmentation Mask (white = detected)")
         ax2.axis('off')
 
         # Plot 3: Scatter plot of hue vs angle

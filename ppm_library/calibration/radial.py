@@ -535,10 +535,25 @@ class RadialCalibrator:
 
         # The sunburst should be the leftmost large component
         sunburst = large_regions_sorted[0]
-        center_y = int(sunburst.centroid[0])
-        center_x = int(sunburst.centroid[1])
 
-        return (center_y, center_x)
+        # Use bounding box center instead of centroid (center of mass).
+        # Centroid is biased toward denser outer spoke areas for fan patterns.
+        # bbox = (min_row, min_col, max_row, max_col)
+        y_min, x_min, y_max, x_max = sunburst.bbox
+        bbox_height = y_max - y_min
+        bbox_width = x_max - x_min
+
+        # Vertical center is the middle of the bounding box
+        center_y = (y_min + y_max) // 2
+
+        # If the region is much wider than tall, gratings may extend to the
+        # right -- the hub is at the left side of the circular portion
+        if bbox_width > bbox_height * 1.2:
+            center_x = x_min + bbox_height // 2
+        else:
+            center_x = (x_min + x_max) // 2
+
+        return (int(center_y), int(center_x))
 
     def _find_center_saturation_based(
         self,
