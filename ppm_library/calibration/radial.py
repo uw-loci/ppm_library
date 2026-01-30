@@ -475,8 +475,11 @@ class RadialCalibrator:
     ) -> Optional[Tuple[int, int]]:
         """Find center using mode-based background detection.
 
-        This method works well when ~90%+ of the image is background, and
-        the sunburst is the leftmost large foreground structure.
+        Detects foreground pixels by their Euclidean distance from the
+        background color (estimated via per-channel mode). At higher
+        magnifications the individual spokes may not be connected, so a
+        morphological dilation is applied to merge nearby spoke regions
+        before selecting the largest connected component.
 
         Args:
             image: RGB image
@@ -509,36 +512,22 @@ class RadialCalibrator:
         if np.sum(foreground) < 1000:
             return None
 
-        # Find connected components
-        labeled, n_labels = ndimage.label(foreground)
+        # Dilate the foreground mask to merge nearby spoke regions.
+        # At higher magnifications spokes are separate connected components;
+        # dilation bridges the gaps so they form a single cluster.
+        selem = morphology.disk(10)
+        foreground_merged = ndimage.binary_dilation(foreground, structure=selem)
+
+        # Find connected components on the merged mask
+        labeled, n_labels = ndimage.label(foreground_merged)
         if n_labels == 0:
             return None
 
-        # Get region properties
+        # Select the largest connected component (the sunburst cluster)
         regions = measure.regionprops(labeled)
+        sunburst = max(regions, key=lambda r: r.area)
 
-        # Filter for large components (area > 10000 pixels)
-        min_area = 10000
-        large_regions = [r for r in regions if r.area > min_area]
-
-        if not large_regions:
-            # Try with smaller threshold
-            min_area = 1000
-            large_regions = [r for r in regions if r.area > min_area]
-
-        if not large_regions:
-            return None
-
-        # Sort by leftmost position (min_col from bounding box)
-        # bbox = (min_row, min_col, max_row, max_col)
-        large_regions_sorted = sorted(large_regions, key=lambda r: r.bbox[1])
-
-        # The sunburst should be the leftmost large component
-        sunburst = large_regions_sorted[0]
-
-        # Use bounding box center instead of centroid (center of mass).
-        # Centroid is biased toward denser outer spoke areas for fan patterns.
-        # bbox = (min_row, min_col, max_row, max_col)
+        # Use the bounding box center of the largest merged region
         y_min, x_min, y_max, x_max = sunburst.bbox
         bbox_height = y_max - y_min
         bbox_width = x_max - x_min
@@ -586,38 +575,31 @@ class RadialCalibrator:
             # Fall back to image center
             return (saturation.shape[0] // 2, saturation.shape[1] // 4)
 
-        # Label connected components
-        labeled, num_features = ndimage.label(mask)
+        # Dilate to merge nearby spoke regions (same as mode-based method)
+        selem = morphology.disk(10)
+        mask_merged = ndimage.binary_dilation(mask, structure=selem)
+
+        # Label connected components on the merged mask
+        labeled, num_features = ndimage.label(mask_merged)
 
         if num_features == 0:
             return (saturation.shape[0] // 2, saturation.shape[1] // 4)
 
-        # Find largest connected component
-        component_sizes = ndimage.sum(mask, labeled, range(1, num_features + 1))
-        largest_component = np.argmax(component_sizes) + 1
+        # Select the largest connected component (the sunburst cluster)
+        regions = measure.regionprops(labeled)
+        sunburst = max(regions, key=lambda r: r.area)
 
-        # Get bounding box of largest component
-        largest_mask = labeled == largest_component
-        rows = np.any(largest_mask, axis=1)
-        cols = np.any(largest_mask, axis=0)
-        row_indices = np.where(rows)[0]
-        col_indices = np.where(cols)[0]
-
-        # Bounding box dimensions
-        y_min, y_max = row_indices[0], row_indices[-1]
-        x_min, x_max = col_indices[0], col_indices[-1]
+        # Use bounding box center
+        y_min, x_min, y_max, x_max = sunburst.bbox
         bbox_height = y_max - y_min
         bbox_width = x_max - x_min
-
-        # The sunburst is circular, so the diameter equals the height
-        diameter = bbox_height
 
         # Center y is the middle of the vertical extent
         center_y = (y_min + y_max) // 2
 
         # Center x: if width >> height, gratings are included on the right
         if bbox_width > bbox_height * 1.2:
-            center_x = x_min + diameter // 2
+            center_x = x_min + bbox_height // 2
         else:
             center_x = (x_min + x_max) // 2
 
