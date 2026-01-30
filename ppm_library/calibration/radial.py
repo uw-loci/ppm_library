@@ -114,12 +114,42 @@ def create_hue_axis_colorbar(ax):
     return cbar_ax
 
 
+def _circular_hue_mean(hue_values: np.ndarray) -> float:
+    """Compute circular mean for hue values (0-1 range, wraps at 0/1).
+
+    Hue is circular: 0.99 and 0.01 are close together (both near red).
+    Regular np.mean gives incorrect results near the wrapping boundary.
+    """
+    theta = np.asarray(hue_values) * 2.0 * np.pi
+    mean_angle = np.arctan2(np.mean(np.sin(theta)), np.mean(np.cos(theta)))
+    if mean_angle < 0:
+        mean_angle += 2.0 * np.pi
+    return float(mean_angle / (2.0 * np.pi))
+
+
+def _circular_hue_std(hue_values: np.ndarray) -> float:
+    """Compute circular standard deviation for hue values (0-1 range).
+
+    Returns a value in [0, ~0.37] where 0 = perfectly consistent and
+    higher values indicate more dispersion. Completely uniform distribution
+    gives ~0.37. Values above 0.15 typically indicate non-spoke pixels.
+    """
+    theta = np.asarray(hue_values) * 2.0 * np.pi
+    sin_mean = np.mean(np.sin(theta))
+    cos_mean = np.mean(np.cos(theta))
+    R = np.sqrt(sin_mean ** 2 + cos_mean ** 2)
+    R = min(R, 1.0)  # numerical safety
+    if R < 1e-10:
+        return 1.0  # completely dispersed
+    return float(np.sqrt(-2.0 * np.log(R)) / (2.0 * np.pi))
+
+
 @dataclass
 class RadialSample:
     """Data for a single radial sample."""
     angle: float  # Angle in degrees (0-180)
-    hue_mean: float  # Mean hue value along the radial line
-    hue_std: float  # Standard deviation of hue
+    hue_mean: float  # Circular mean hue value along the radial line
+    hue_std: float  # Circular standard deviation of hue
     n_samples: int  # Number of pixels sampled
 
 
@@ -288,6 +318,10 @@ class RadialCalibrator:
         # Auto-detect center if not provided
         if center is None:
             center = self._find_center(saturation, value, roi, image=image)
+
+        # Refine center by testing nearby positions and picking the one
+        # that gives the most consistent spoke hue readings
+        center = self._refine_center(hue, saturation, value, center)
 
         # Sample along radial lines (finds optimal rotation to hit spoke centers)
         samples, rotation = self._radial_sample(hue, saturation, value, center)
@@ -605,6 +639,68 @@ class RadialCalibrator:
 
         return (int(center_y), int(center_x))
 
+    def _refine_center(
+        self,
+        hue: np.ndarray,
+        saturation: np.ndarray,
+        value: np.ndarray,
+        initial_center: Tuple[int, int],
+        search_radius: int = 6,
+        step: int = 2,
+    ) -> Tuple[int, int]:
+        """Refine center position by testing nearby candidates.
+
+        Tests a grid of center positions around the initial estimate,
+        running the full radial sampling and regression for each candidate.
+        Selects the center that produces the highest R-squared.
+
+        The search grid is small (default +/- 6 pixels, step 2) since
+        the initial center from auto-detection is usually close. Each
+        candidate runs the full sampling pipeline including per-spoke
+        local refinement, so results are reliable.
+
+        Args:
+            hue: Hue channel (0-1)
+            saturation: Saturation channel
+            value: Value channel
+            initial_center: (y, x) initial center estimate
+            search_radius: Pixels to search in each direction (default 6)
+            step: Step size in pixels (default 2)
+
+        Returns:
+            (y, x) refined center coordinates
+        """
+        h, w = hue.shape
+        cy0, cx0 = initial_center
+
+        best_r_squared = -1.0
+        best_center = initial_center
+
+        for dy in range(-search_radius, search_radius + 1, step):
+            for dx in range(-search_radius, search_radius + 1, step):
+                cy = cy0 + dy
+                cx = cx0 + dx
+
+                if cy < 0 or cy >= h or cx < 0 or cx >= w:
+                    continue
+
+                # Run full sampling pipeline for this candidate center
+                samples, rotation = self._radial_sample(
+                    hue, saturation, value, (cy, cx)
+                )
+
+                if len(samples) < 3:
+                    continue
+
+                # Fit regression and score by R-squared
+                result = self._fit_regression(samples, (cy, cx), rotation)
+
+                if result.r_squared > best_r_squared:
+                    best_r_squared = result.r_squared
+                    best_center = (cy, cx)
+
+        return best_center
+
     def _radial_sample(
         self,
         hue: np.ndarray,
@@ -614,8 +710,14 @@ class RadialCalibrator:
     ) -> Tuple[List[RadialSample], float]:
         """Sample hue values along radial lines at spoke centers.
 
-        Finds the optimal rotation offset that maximizes saturation (indicating
-        we're sampling the center of spokes rather than the gray gaps).
+        Two-stage alignment:
+        1. Global rotation search to roughly align sampling grid with spokes
+        2. Per-spoke local refinement to find each spoke's actual center
+
+        The local refinement is necessary because real sunburst patterns have
+        slight non-uniformities in spoke spacing. A global rotation that works
+        well on average can still miss individual spokes by 2-3 degrees, which
+        is enough to land in the gap between spokes at higher magnifications.
 
         Args:
             hue: Hue channel (0-1)
@@ -624,15 +726,16 @@ class RadialCalibrator:
             center: (y, x) center coordinates
 
         Returns:
-            Tuple of (List of RadialSample objects, optimal rotation in degrees)
+            Tuple of (List of RadialSample objects, global rotation in degrees)
         """
         center_y, center_x = center
         h, w = hue.shape
 
         # Base angles at spoke centers (180/n_spokes spacing)
         base_angles = np.linspace(0, 180, self.n_spokes, endpoint=False)
+        spoke_half_width = (180.0 / self.n_spokes) / 2.0
 
-        # Search for optimal rotation
+        # Stage 1: Global rotation search (coarse alignment)
         best_rotation = 0.0
         best_total_saturation = -1
 
@@ -660,29 +763,79 @@ class RadialCalibrator:
                 best_total_saturation = total_saturation
                 best_rotation = rotation
 
-        # Now sample at the optimal rotation
+        # Stage 2: Per-spoke local refinement and sampling
+        # For each spoke, search a small range around the globally rotated
+        # position to find the actual spoke center.
+        #
+        # Refinement criterion: minimum circular hue standard deviation
+        # among foreground pixels, with a minimum sample count floor.
+        # A line through the center of a spoke has consistent hue (low
+        # circular std), while a line in the gap between spokes samples
+        # dark pixels with random/noisy hue values and high circular std.
+        #
+        # The search range is limited to +/- 3 degrees to prevent jumping
+        # to an adjacent spoke. Real non-uniformities are typically <3 deg.
+        local_search_range = min(3.0, spoke_half_width)
+        expected_samples = (self.radius_outer - self.radius_inner) // 2
+        min_local_samples = max(self.min_samples_per_angle, expected_samples // 2)
+
         samples = []
         for angle in base_angles:
-            rotated_angle = angle + best_rotation
-            angle_rad = np.radians(rotated_angle)
+            globally_rotated = angle + best_rotation
 
-            hue_samples = []
+            # Fine search around globally rotated position
+            best_local_std = float('inf')
+            best_local_angle = globally_rotated
+            best_local_hue_samples = None
+            local_steps = np.linspace(
+                -local_search_range, local_search_range, 21
+            )
 
-            for r in range(self.radius_inner, self.radius_outer, 2):
-                x = int(center_x + r * np.cos(angle_rad))
-                y = int(center_y - r * np.sin(angle_rad))
+            for local_offset in local_steps:
+                test_angle = globally_rotated + local_offset
+                angle_rad = np.radians(test_angle)
+                local_hues = []
 
-                if 0 <= y < h and 0 <= x < w:
-                    if (saturation[y, x] > self.saturation_threshold and
-                        value[y, x] > self.value_threshold):
-                        hue_samples.append(hue[y, x])
+                for r in range(self.radius_inner, self.radius_outer, 2):
+                    x = int(center_x + r * np.cos(angle_rad))
+                    y = int(center_y - r * np.sin(angle_rad))
 
-            if len(hue_samples) >= self.min_samples_per_angle:
+                    if 0 <= y < h and 0 <= x < w:
+                        if (saturation[y, x] > self.saturation_threshold and
+                            value[y, x] > self.value_threshold):
+                            local_hues.append(hue[y, x])
+
+                # Require enough samples to get a reliable circular std
+                if len(local_hues) >= min_local_samples:
+                    local_std = _circular_hue_std(local_hues)
+                    if local_std < best_local_std:
+                        best_local_std = local_std
+                        best_local_angle = test_angle
+                        best_local_hue_samples = local_hues
+
+            # Fall back to global rotation position if no candidate met
+            # the sample count requirement
+            if best_local_hue_samples is None:
+                angle_rad = np.radians(globally_rotated)
+                fallback_hues = []
+                for r in range(self.radius_inner, self.radius_outer, 2):
+                    x = int(center_x + r * np.cos(angle_rad))
+                    y = int(center_y - r * np.sin(angle_rad))
+                    if 0 <= y < h and 0 <= x < w:
+                        if (saturation[y, x] > self.saturation_threshold and
+                            value[y, x] > self.value_threshold):
+                            fallback_hues.append(hue[y, x])
+                if len(fallback_hues) >= self.min_samples_per_angle:
+                    best_local_hue_samples = fallback_hues
+                    best_local_angle = globally_rotated
+                    best_local_std = _circular_hue_std(fallback_hues)
+
+            if best_local_hue_samples is not None:
                 sample = RadialSample(
-                    angle=rotated_angle,  # Use the rotated angle
-                    hue_mean=np.mean(hue_samples),
-                    hue_std=np.std(hue_samples),
-                    n_samples=len(hue_samples),
+                    angle=best_local_angle,
+                    hue_mean=_circular_hue_mean(best_local_hue_samples),
+                    hue_std=best_local_std,
+                    n_samples=len(best_local_hue_samples),
                 )
                 samples.append(sample)
 
@@ -718,7 +871,7 @@ class RadialCalibrator:
             # Fit: angle = m * hue + b
             coeffs = np.polyfit(hue_shifted, angles, 1)
 
-            # Calculate R²
+            # Calculate R-squared
             predicted = np.polyval(coeffs, hue_shifted)
             ss_res = np.sum((angles - predicted) ** 2)
             ss_tot = np.sum((angles - np.mean(angles)) ** 2)
