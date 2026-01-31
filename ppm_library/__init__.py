@@ -67,7 +67,6 @@ from ppm_library.debayering.cpu import CPUDebayer
 from ppm_library.calibration import (
     RadialCalibrator,
     RadialCalibrationResult,
-    SunburstCalibrator,
     HistogramCalibration,
     compute_hue_histogram,
 )
@@ -98,7 +97,6 @@ __all__ = [
     # Hue-to-Angle Calibration
     "RadialCalibrator",
     "RadialCalibrationResult",
-    "SunburstCalibrator",
     "HistogramCalibration",
     "compute_hue_histogram",
     # PPM Image Analysis

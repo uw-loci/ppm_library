@@ -134,8 +134,7 @@ corrected = hue_shift(image, shift)
 - `PPMBirefringenceMaximizationTester` - Optimize birefringence signal
 
 ### `ppm_library.calibration` - Hue-to-Angle Calibration
-- `RadialCalibrator` - Radial sampling for connected sunburst patterns (recommended)
-- `SunburstCalibrator` - Region-based segmentation for separated rectangles
+- `RadialCalibrator` - Radial sampling for sunburst/fan pattern slides
 - `RadialCalibrationResult` - Calibration data with hue_to_angle() method
 - `HistogramCalibration` - Correct optical anisotropy in hue histograms
 - `compute_hue_histogram()` - Compute hue histogram from RGB image
@@ -171,7 +170,7 @@ pytest
 
 # Run specific test file
 pytest tests/test_debayering.py
-pytest tests/test_sunburst.py
+pytest tests/test_debayering.py
 
 # Run with coverage report
 pytest --cov=ppm_library --cov-report=html
@@ -210,7 +209,6 @@ Apply calibration to PPM images to get fiber orientation angles:
 ## Examples
 
 See the `examples/` directory for complete examples:
-- `calibration_example.py` - Sunburst calibration demo
 - `create_phantom.py` - Create synthetic calibration phantoms for testing
 
 ## License

@@ -2,11 +2,10 @@
 Radial Calibration Module.
 
 This module provides tools for creating hue-to-angle linear regression models
-using radial sampling from calibration slides with connected sunburst patterns.
+using radial sampling from calibration slides with sunburst/fan patterns.
 
-Unlike region-based segmentation (SunburstCalibrator), this approach samples
-hue values along radial lines from the center, which works better when spokes
-connect at the center and form a single region.
+This approach samples hue values along radial lines (spokes) from the center
+of the pattern, fitting a linear regression between hue and orientation angle.
 """
 
 from dataclasses import dataclass

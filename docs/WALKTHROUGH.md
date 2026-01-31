@@ -350,36 +350,18 @@ correction = HistogramCalibration.from_circular_histogram(histogram)
 corrected_histogram = correction.correct_histogram(raw_histogram)
 ```
 
-### Alternative Calibration: Sunburst Calibrator
-
-For calibration slides with separated rectangular regions:
-
-```python
-from ppm_library import SunburstCalibrator
-
-calibrator = SunburstCalibrator(
-    n_expected_rectangles=16,
-    merge_duplicates=True  # Merge opposite directions
-)
-result = calibrator.calibrate("calibration_slide.tif", debug_plot=True)
-```
-
 ---
 
 ## Example Scripts
 
 See the `examples/` directory for complete working examples:
 
-- **`calibration_example.py`** - Full calibration workflow with visualization
 - **`create_phantom.py`** - Create synthetic calibration phantoms for testing
 
 Run the examples:
 ```bash
 # Create a test phantom
 python examples/create_phantom.py
-
-# Run calibration on it
-python examples/calibration_example.py synthetic_phantom.tif
 ```
 
 ---
