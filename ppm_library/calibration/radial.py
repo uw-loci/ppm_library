@@ -10,7 +10,7 @@ of the pattern, fitting a linear regression between hue and orientation angle.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple, List, Union
+from typing import Dict, Optional, Tuple, List, Union
 
 import numpy as np
 from scipy import ndimage, stats
@@ -111,6 +111,43 @@ def create_hue_axis_colorbar(ax):
                      fontsize=9, fontweight='bold', color='black')
 
     return cbar_ax
+
+
+def add_shifted_hue_colorbar(ax, hue_offset: float) -> None:
+    """Add a rainbow colorbar shifted by hue_offset below the given axes.
+
+    The colorbar shows the full hue spectrum shifted so that the x-axis
+    positions correspond to the shifted hue values used in calibration
+    scatter plots.
+
+    Args:
+        ax: Matplotlib axes
+        hue_offset: Hue offset used when shifting hue values
+    """
+    pos = ax.get_position()
+
+    # Create a new axes for the colorbar below the plot
+    cbar_ax = ax.figure.add_axes([pos.x0, pos.y0 - 0.06, pos.width, 0.02])
+
+    # Create SHIFTED hue gradient (matching the X axis which shows shifted values)
+    gradient = np.linspace(0, 1, 256).reshape(1, -1)
+    hsv = np.zeros((1, 256, 3))
+    # Shift the hue values back by offset to show actual colors at shifted positions
+    hsv[0, :, 0] = (gradient + hue_offset) % 1.0
+    hsv[0, :, 1] = 1.0
+    hsv[0, :, 2] = 1.0
+    rgb = mcolors.hsv_to_rgb(hsv)
+
+    cbar_ax.imshow(rgb, aspect='auto', extent=[0, 1, 0, 1])
+    cbar_ax.set_xlim(0, 1)
+    cbar_ax.set_xticks([])
+    cbar_ax.set_yticks([])
+
+    # Add shifted ROYGBIV labels
+    for hue, letter, color_name in ROYGBIV_COLORS:
+        shifted_pos = (hue - hue_offset) % 1.0
+        cbar_ax.text(shifted_pos, -0.5, letter, ha='center', va='top',
+                     fontsize=9, fontweight='bold', color='black')
 
 
 def _circular_hue_mean(hue_values: np.ndarray) -> float:
@@ -238,6 +275,216 @@ class RadialCalibrationResult:
             center=tuple(data["center"]),
         )
 
+    def check_quality(
+        self,
+        expected_spokes: int,
+        min_r_squared: float = 0.95,
+    ) -> List[str]:
+        """Check calibration quality and return warning strings.
+
+        The caller decides what to do with warnings (log them, display them,
+        abort, etc.). This method only identifies issues.
+
+        Args:
+            expected_spokes: Expected number of spokes in the sunburst pattern
+            min_r_squared: Minimum acceptable R-squared value (default 0.95)
+
+        Returns:
+            List of warning strings (empty if quality is acceptable)
+        """
+        warnings = []
+        spokes_detected = len(self.samples)
+
+        if spokes_detected < expected_spokes:
+            warnings.append(
+                f"Expected {expected_spokes} spokes but found {spokes_detected}. "
+                "Consider repositioning slide or adjusting detection thresholds."
+            )
+
+        if self.r_squared < min_r_squared:
+            warnings.append(
+                f"R-squared ({self.r_squared:.4f}) is below {min_r_squared}. "
+                "Calibration may be inaccurate. Check for slide positioning "
+                "or detection issues."
+            )
+
+        return warnings
+
+    def save_plot(
+        self,
+        output_path: Union[str, Path, None],
+        image: np.ndarray,
+        calibrator: "RadialCalibrator",
+        extra_info: Optional[Dict[str, str]] = None,
+        dpi: int = 150,
+    ) -> None:
+        """Create and save a calibration visualization plot.
+
+        Creates a 2x2 plot showing:
+        - Original image with center crosshair and radial sampling lines
+        - Foreground mask (B&W threshold visualization)
+        - Color-coded scatter plot with regression line and hue colorbar
+        - Calibration info text with optional extra metadata
+
+        When output_path is None, displays the plot interactively using
+        plt.show(). When a path is given, saves to file using the Agg
+        backend.
+
+        Args:
+            output_path: Path to save the plot, or None for interactive display
+            image: Original calibration image (RGB, uint8 or float)
+            calibrator: RadialCalibrator instance (used for threshold and
+                radius parameters)
+            extra_info: Optional dict of display-only metadata to show in
+                the info panel (e.g. {"Exposure R": "50 ms"})
+            dpi: DPI for saved images (default 150, ignored for interactive)
+        """
+        import matplotlib
+        if output_path is not None:
+            matplotlib.use("Agg")
+        import matplotlib.pyplot as plt_local
+        import matplotlib.colors as mcolors_local
+        from skimage import color as skcolor
+
+        fig, axes = plt_local.subplots(2, 2, figsize=(14, 14))
+
+        # Normalize image to uint8 for display and HSV conversion
+        if image.dtype != np.uint8:
+            if image.max() <= 1.0:
+                img_uint8 = (image * 255).astype(np.uint8)
+            else:
+                img_uint8 = image.astype(np.uint8)
+        else:
+            img_uint8 = image
+
+        # --- Plot 1: Original image with center crosshair and sampling lines ---
+        ax1 = axes[0, 0]
+        ax1.imshow(img_uint8)
+        cy, cx = self.center
+        ax1.plot(cx, cy, 'w+', markersize=20, markeredgewidth=3)
+        for sample in self.samples:
+            angle_rad = np.radians(sample.angle)
+            x_inner = cx + calibrator.radius_inner * np.cos(angle_rad)
+            y_inner = cy - calibrator.radius_inner * np.sin(angle_rad)
+            x_outer = cx + calibrator.radius_outer * np.cos(angle_rad)
+            y_outer = cy - calibrator.radius_outer * np.sin(angle_rad)
+            ax1.plot([x_inner, x_outer], [y_inner, y_outer],
+                     'w-', alpha=0.5, linewidth=1)
+        rot_text = (f", rot={self.rotation:.1f} deg"
+                    if self.rotation != 0 else "")
+        ax1.set_title(
+            f"Radial Sampling ({len(self.samples)} spokes{rot_text})")
+        ax1.axis("off")
+
+        # --- Plot 2: Foreground mask ---
+        ax2 = axes[0, 1]
+        hsv_img = skcolor.rgb2hsv(img_uint8)
+        foreground_mask = (
+            (hsv_img[:, :, 1] > calibrator.saturation_threshold)
+            & (hsv_img[:, :, 2] > calibrator.value_threshold)
+        )
+        ax2.imshow(foreground_mask, cmap="gray")
+        ax2.plot(cx, cy, 'r+', markersize=15, markeredgewidth=2)
+        ax2.set_title(
+            f"Foreground Mask (sat>{calibrator.saturation_threshold}, "
+            f"val>{calibrator.value_threshold})")
+        ax2.axis("off")
+
+        # --- Plot 3: Color-coded scatter plot ---
+        ax3 = axes[1, 0]
+        raw_hue_values = np.array([s.hue_mean for s in self.samples])
+
+        # Check for saturation warnings
+        saturated_angles = set()
+        if self.warnings:
+            for warning in self.warnings:
+                if "SATURATION" in warning.upper():
+                    for sample in self.samples:
+                        saturated_angles.add(sample.angle)
+
+        for i, (shifted_hue, angle) in enumerate(
+                zip(self.hue_values, self.angles)):
+            raw_hue = raw_hue_values[i]
+            hsv_color = np.array([[[raw_hue, 1.0, 1.0]]])
+            rgb_color = mcolors_local.hsv_to_rgb(hsv_color)[0, 0]
+            marker = ('X' if self.samples[i].angle in saturated_angles
+                      else 'o')
+            edge_color = ('red' if self.samples[i].angle in saturated_angles
+                          else 'black')
+            ax3.scatter(
+                shifted_hue, angle,
+                s=100, c=[rgb_color], edgecolors=edge_color,
+                linewidths=2, marker=marker, zorder=5,
+            )
+
+        # Regression line
+        hue_line = np.linspace(0, 1, 100)
+        predicted_angles = self.inv_slope * hue_line + self.inv_intercept
+        ax3.plot(hue_line, predicted_angles, 'r-', linewidth=2,
+                 label=f"R^2={self.r_squared:.4f}")
+        ax3.set_xlabel("Shifted Hue Value")
+        ax3.set_ylabel("Angle (degrees)")
+        ax3.set_title("Hue to Angle Calibration")
+        ax3.legend(loc='best')
+        ax3.grid(True, alpha=0.3)
+        ax3.set_xlim(0, 1)
+        ax3.set_ylim(0, 180)
+
+        # --- Plot 4: Calibration info text ---
+        ax4 = axes[1, 1]
+        ax4.axis("off")
+        info_text = (
+            f"Radial Calibration Results\n"
+            f"{'=' * 35}\n\n"
+            f"R-squared: {self.r_squared:.6f}\n"
+            f"Spokes detected: {len(self.samples)}\n"
+            f"Center: y={self.center[0]}, x={self.center[1]}\n"
+            f"Hue offset: {self.hue_offset:.4f}\n\n"
+            f"Regression (hue -> angle):\n"
+            f"  angle = {self.inv_slope:.4f} * hue + "
+            f"{self.inv_intercept:.4f}\n\n"
+            f"Regression (angle -> hue):\n"
+            f"  hue = {self.slope:.6f} * angle + "
+            f"{self.intercept:.4f}\n\n"
+            f"Sampling: r_inner={calibrator.radius_inner}, "
+            f"r_outer={calibrator.radius_outer}\n"
+        )
+
+        if extra_info:
+            info_text += "\nImaging Settings:\n"
+            for key, value in extra_info.items():
+                info_text += f"  {key}: {value}\n"
+
+        if self.warnings:
+            info_text += f"\nWarnings: {len(self.warnings)}\n"
+            for w in self.warnings:
+                info_text += f"  - {w}\n"
+
+        info_text += "\nCalibration file saved for use in PPM analysis."
+
+        ax4.text(
+            0.1, 0.9, info_text,
+            transform=ax4.transAxes,
+            fontsize=10,
+            verticalalignment="top",
+            fontfamily="monospace",
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+        )
+
+        # Finalize layout BEFORE adding the colorbar so get_position()
+        # returns accurate coordinates
+        plt_local.tight_layout()
+        plt_local.subplots_adjust(bottom=0.08)
+
+        # Add shifted rainbow colorbar below the scatter plot
+        add_shifted_hue_colorbar(ax3, self.hue_offset)
+
+        if output_path is not None:
+            plt_local.savefig(str(output_path), dpi=dpi, bbox_inches="tight")
+            plt_local.close(fig)
+        else:
+            plt_local.show()
+
 
 class RadialCalibrator:
     """Calibrator using radial sampling for connected sunburst patterns.
@@ -283,6 +530,102 @@ class RadialCalibrator:
         self.value_threshold = value_threshold
         self.min_samples_per_angle = min_samples_per_angle
         self.rotation_search_degrees = rotation_search_degrees
+
+    def save_detection_mask(
+        self,
+        image: np.ndarray,
+        output_path: Union[str, Path],
+        dpi: int = 150,
+    ) -> None:
+        """Save a debug visualization of the foreground detection mask.
+
+        Creates a 2x2 figure showing the original image, raw foreground mask,
+        cleaned connected-component labels, and an overlay of detected regions
+        on the original. Useful for troubleshooting when spoke detection fails.
+
+        Uses the same HSV saturation and value thresholds configured on this
+        calibrator instance.
+
+        Args:
+            image: Original RGB image (uint8 or float)
+            output_path: Path to save the mask visualization PNG
+            dpi: DPI for the saved image (default 150)
+        """
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt_local
+        from skimage import color as skcolor, morphology as skmorph, measure
+        from scipy import ndimage as ndi
+
+        # Normalize to uint8
+        if image.dtype != np.uint8:
+            if image.max() <= 1.0:
+                img_uint8 = (image * 255).astype(np.uint8)
+            else:
+                img_uint8 = image.astype(np.uint8)
+        else:
+            img_uint8 = image
+
+        hsv = skcolor.rgb2hsv(img_uint8)
+        sat = hsv[:, :, 1]
+        val = hsv[:, :, 2]
+
+        # Create foreground mask using same thresholds as calibration
+        foreground_mask = (
+            (sat > self.saturation_threshold)
+            & (val > self.value_threshold)
+        )
+
+        # Clean up mask
+        try:
+            foreground_clean = skmorph.remove_small_objects(
+                foreground_mask, min_size=100)
+            foreground_clean = skmorph.remove_small_holes(
+                foreground_clean, area_threshold=500)
+            foreground_clean = ndi.median_filter(
+                foreground_clean.astype(np.uint8), size=5
+            ).astype(bool)
+        except Exception:
+            foreground_clean = foreground_mask
+
+        labels = measure.label(foreground_clean)
+        n_regions = labels.max()
+
+        fig, axes = plt_local.subplots(2, 2, figsize=(14, 12))
+
+        axes[0, 0].imshow(img_uint8)
+        axes[0, 0].set_title("Original Image")
+        axes[0, 0].axis("off")
+
+        axes[0, 1].imshow(foreground_mask, cmap="gray")
+        axes[0, 1].set_title(
+            f"Foreground Mask (sat>{self.saturation_threshold}, "
+            f"val>{self.value_threshold})")
+        axes[0, 1].axis("off")
+
+        axes[1, 0].imshow(labels, cmap="nipy_spectral")
+        axes[1, 0].set_title(f"Detected Regions: {n_regions} found")
+        axes[1, 0].axis("off")
+
+        overlay = img_uint8.copy()
+        overlay[foreground_clean, 1] = np.minimum(
+            255, overlay[foreground_clean, 1] + 100)
+        axes[1, 1].imshow(overlay)
+        axes[1, 1].set_title("Overlay (detected regions highlighted)")
+        axes[1, 1].axis("off")
+
+        fig.suptitle(
+            f"Detection Debug - Saturation threshold: "
+            f"{self.saturation_threshold}, "
+            f"Value threshold: {self.value_threshold}\n"
+            f"Regions found: {n_regions} "
+            f"(need at least 3 for calibration)",
+            fontsize=12,
+        )
+
+        plt_local.tight_layout()
+        plt_local.savefig(str(output_path), dpi=dpi, bbox_inches="tight")
+        plt_local.close(fig)
 
     def calibrate(
         self,
@@ -916,124 +1259,23 @@ class RadialCalibrator:
         center: Tuple[int, int],
         rotation: float = 0.0,
     ) -> None:
-        """Create debug visualization with ROYGBIV color indicators."""
-        fig = plt.figure(figsize=(15, 6))
+        """Create debug visualization with ROYGBIV color indicators.
 
-        # Left: Original image with sampling lines
-        ax1 = fig.add_subplot(1, 3, 1)
-        ax1.imshow(image)
-        cy, cx = center
-        ax1.plot(cx, cy, 'w+', markersize=20, markeredgewidth=3)
-
-        for sample in samples:
-            angle_rad = np.radians(sample.angle)
-            x_end = cx + self.radius_outer * np.cos(angle_rad)
-            y_end = cy - self.radius_outer * np.sin(angle_rad)
-            ax1.plot([cx, x_end], [cy, y_end], 'w-', alpha=0.5, linewidth=1)
-
-        ax1.set_title(f"Radial Sampling ({len(samples)} spokes, rot={rotation:.1f} deg)")
-        ax1.axis('off')
-
-        # Middle: Hue channel
-        ax2 = fig.add_subplot(1, 3, 2)
-        ax2.imshow(hue, cmap='hsv')
-        ax2.plot(cx, cy, 'k+', markersize=20, markeredgewidth=3)
-        ax2.set_title("Hue Channel")
-        ax2.axis('off')
-
-        # Right: Scatter plot with color-coded points and shifted colorbar
-        ax3 = fig.add_subplot(1, 3, 3)
-
-        # Get raw hue values for each sample to determine point colors
-        raw_hue_values = np.array([s.hue_mean for s in samples])
-
-        # Create color array from raw hue values (for visual appearance)
-        point_colors = np.zeros((len(samples), 3))
-        for i, raw_hue in enumerate(raw_hue_values):
-            # Convert hue to RGB for point color
-            hsv_color = np.array([[[raw_hue, 1.0, 1.0]]])
-            rgb_color = mcolors.hsv_to_rgb(hsv_color)[0, 0]
-            point_colors[i] = rgb_color
-
-        # Check which angles have saturation issues
-        saturated_angles = set()
-        if result.warnings:
-            for warning in result.warnings:
-                if "SATURATION" in warning:
-                    # Mark all angles as potentially affected
-                    for sample in samples:
-                        saturated_angles.add(sample.angle)
-
-        # Plot points with colors matching their actual hue
-        # Use circles for normal points, X for saturated
-        for i, (shifted_hue, angle) in enumerate(zip(result.hue_values, result.angles)):
-            marker = 'X' if samples[i].angle in saturated_angles else 'o'
-            edge_color = 'red' if samples[i].angle in saturated_angles else 'black'
-            ax3.scatter(
-                shifted_hue, angle,
-                s=100,
-                c=[point_colors[i]],
-                edgecolors=edge_color,
-                linewidths=2,
-                marker=marker,
-                zorder=5
-            )
-
-        # Plot regression line using SHIFTED hue values (matching X axis)
-        hue_line = np.linspace(0, 1, 100)
-        # The regression is: angle = inv_slope * shifted_hue + inv_intercept
-        predicted_angles = result.inv_slope * hue_line + result.inv_intercept
-        ax3.plot(hue_line, predicted_angles, 'r-', linewidth=2,
-                label=f'R²={result.r_squared:.4f}')
-
-        ax3.set_xlabel("Shifted Hue Value")
-        ax3.set_ylabel("Angle (degrees)")
-        ax3.set_title(f"Radial Calibration: R²={result.r_squared:.4f}")
-        ax3.legend(loc='best')
-        ax3.grid(True, alpha=0.3)
-        ax3.set_xlim(0, 1)
-        ax3.set_ylim(0, 180)
-
-        # Add shifted rainbow colorbar below the plot
-        self._add_shifted_hue_colorbar(ax3, result.hue_offset)
-
-        plt.tight_layout()
-        plt.subplots_adjust(bottom=0.15)  # Make room for colorbar
-        plt.show()
+        Delegates to result.save_plot() with output_path=None for
+        interactive display.
+        """
+        result.save_plot(output_path=None, image=image, calibrator=self)
 
     def _add_shifted_hue_colorbar(self, ax, hue_offset: float) -> None:
         """Add a rainbow colorbar shifted by hue_offset.
+
+        Delegates to the module-level function.
 
         Args:
             ax: Matplotlib axes
             hue_offset: Hue offset to shift the colorbar
         """
-        # Get axis position
-        pos = ax.get_position()
-
-        # Create a new axes for the colorbar below the plot
-        cbar_ax = ax.figure.add_axes([pos.x0, pos.y0 - 0.06, pos.width, 0.02])
-
-        # Create SHIFTED hue gradient (matching the X axis which shows shifted values)
-        gradient = np.linspace(0, 1, 256).reshape(1, -1)
-        hsv = np.zeros((1, 256, 3))
-        # Shift the hue values back by offset to show actual colors at shifted positions
-        hsv[0, :, 0] = (gradient + hue_offset) % 1.0
-        hsv[0, :, 1] = 1.0
-        hsv[0, :, 2] = 1.0
-        rgb = mcolors.hsv_to_rgb(hsv)
-
-        cbar_ax.imshow(rgb, aspect='auto', extent=[0, 1, 0, 1])
-        cbar_ax.set_xlim(0, 1)
-        cbar_ax.set_xticks([])
-        cbar_ax.set_yticks([])
-
-        # Add shifted ROYGBIV labels
-        for hue, letter, color_name in ROYGBIV_COLORS:
-            # Shift the label position
-            shifted_pos = (hue - hue_offset) % 1.0
-            cbar_ax.text(shifted_pos, -0.5, letter, ha='center', va='top',
-                        fontsize=9, fontweight='bold', color='black')
+        add_shifted_hue_colorbar(ax, hue_offset)
 
 
 def calibrate_radial(
