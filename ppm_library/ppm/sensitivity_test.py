@@ -25,18 +25,16 @@ from datetime import datetime
 import logging
 import yaml
 
-# Import from existing project infrastructure
-from smart_wsi_scanner.tests.test_client import QuPathTestClient
-from smart_wsi_scanner.qp_utils import (
-    PolarizerCalibrationUtils,
-    BackgroundCorrectionUtils,
-)
-from smart_wsi_scanner.server.protocol import ExtendedCommand
-from smart_wsi_scanner.config import ConfigManager
+# Import from modular packages
+from microscope_command_server.client.client import QuPathTestClient
+from microscope_command_server.server.protocol import ExtendedCommand
+from microscope_control.config.manager import ConfigManager
+from ppm_library.ppm.polarizer_calibration import PolarizerCalibrationUtils
+from ppm_library.imaging.background import BackgroundCorrectionUtils
 
 # Import the analysis module from same package
 try:
-    from smart_wsi_scanner.ppm.sensitivity_analysis import PPMRotationAnalyzer
+    from ppm_library.ppm.sensitivity_analysis import PPMRotationAnalyzer
     ANALYZER_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: PPM rotation analyzer not found ({e}). Analysis will be skipped.")
@@ -84,9 +82,10 @@ class PPMRotationSensitivityTester:
         self.keep_images = keep_images
         self.config_yaml = Path(config_yaml)
 
-        # Default output to configurations/ppm_sensitivity_tests/
+        # Default output to ppm_sensitivity_tests/ under config directory
         if output_dir is None:
-            config_dir = Path(__file__).parent.parent / "smart_wsi_scanner" / "configurations"
+            # Use the directory containing the config YAML as the base
+            config_dir = self.config_yaml.parent
             self.output_dir = config_dir / "ppm_sensitivity_tests" / f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         else:
             self.output_dir = Path(output_dir)
@@ -138,8 +137,8 @@ class PPMRotationSensitivityTester:
         """
         exposures = {}
         try:
-            # Try to load imageprocessing config
-            config_dir = Path(__file__).parent.parent / "smart_wsi_scanner" / "configurations"
+            # Try to load imageprocessing config from same directory as main config
+            config_dir = self.config_yaml.parent
             imgproc_file = config_dir / "imageprocessing_PPM.yml"
 
             if imgproc_file.exists():
