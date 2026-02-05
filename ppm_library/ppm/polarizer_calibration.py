@@ -202,7 +202,8 @@ class PolarizerCalibrationUtils:
         fine_step_deg: float = 0.1,
         exposure_ms: float = 10.0,
         channel: int = 1,
-        logger_instance = None
+        logger_instance = None,
+        progress_callback = None
     ) -> Dict[str, Any]:
         """
         Two-stage calibration to determine exact hardware offset for PPM rotation stage.
@@ -229,6 +230,7 @@ class PolarizerCalibrationUtils:
             exposure_ms: Camera exposure time in milliseconds (default: 10.0).
             channel: Which RGB channel to analyze (0=R, 1=G, 2=B, None=mean).
             logger_instance: Logger for output messages.
+            progress_callback: Optional callback(current, total, stage, message) for progress updates.
 
         Returns:
             Dictionary containing:
@@ -302,7 +304,15 @@ class PolarizerCalibrationUtils:
         )
         logger_instance.info(f"Expected duration: ~{len(coarse_hw_positions) * 0.5:.0f} seconds")
 
+        total_coarse = len(coarse_hw_positions)
         for i, hw_pos in enumerate(coarse_hw_positions):
+            # Send progress update before each position (keeps connection alive)
+            if progress_callback:
+                try:
+                    progress_callback(i, total_coarse, "coarse", f"Position {hw_pos:.0f}")
+                except Exception:
+                    pass  # Don't fail calibration if progress reporting fails
+
             # Set hardware position directly
             hardware.core.set_position(rotation_device, hw_pos)
             hardware.core.wait_for_device(rotation_device)
@@ -417,7 +427,15 @@ class PolarizerCalibrationUtils:
                 f"in steps of {fine_hw_step:.1f} ({len(fine_hw_positions)} positions)"
             )
 
-            for hw_pos in fine_hw_positions:
+            total_fine = len(fine_hw_positions)
+            for j, hw_pos in enumerate(fine_hw_positions):
+                # Send progress update (keeps connection alive during fine sweeps)
+                if progress_callback:
+                    try:
+                        progress_callback(j, total_fine, f"fine_{min_idx+1}", f"Fine sweep {min_idx+1}")
+                    except Exception:
+                        pass
+
                 hardware.core.set_position(rotation_device, hw_pos)
                 hardware.core.wait_for_device(rotation_device)
 
@@ -513,6 +531,7 @@ class PolarizerCalibrationUtils:
             num_runs: Number of calibration runs to perform (default: 3)
             stability_threshold_counts: Maximum acceptable variation in encoder counts (default: 50.0 = 0.05deg)
             **kwargs: Additional arguments passed to calibrate_hardware_offset_two_stage
+                      (including progress_callback for connection keepalive)
 
         Returns:
             Dictionary with calibration results plus stability metrics:
@@ -527,6 +546,7 @@ class PolarizerCalibrationUtils:
             RuntimeError: If optical instability exceeds threshold
         """
         logger_instance = kwargs.get('logger_instance', logger)
+        progress_callback = kwargs.get('progress_callback', None)
 
         logger_instance.info("="*70)
         logger_instance.info("POLARIZER CALIBRATION WITH STABILITY CHECK")
@@ -542,8 +562,19 @@ class PolarizerCalibrationUtils:
             logger_instance.info(f"CALIBRATION RUN {run_num}/{num_runs}")
             logger_instance.info(f"{'='*70}")
 
+            # Create wrapper callback that includes run number context
+            def run_progress_callback(current, total, stage, message):
+                if progress_callback:
+                    # Format: run_X_stage (e.g., "run_1_coarse", "run_2_fine_1")
+                    full_stage = f"run_{run_num}_{stage}"
+                    progress_callback(current, total, full_stage, message)
+
+            # Pass the wrapper callback
+            run_kwargs = dict(kwargs)
+            run_kwargs['progress_callback'] = run_progress_callback if progress_callback else None
+
             result = PolarizerCalibrationUtils.calibrate_hardware_offset_two_stage(
-                hardware, **kwargs
+                hardware, **run_kwargs
             )
 
             all_results.append(result)
