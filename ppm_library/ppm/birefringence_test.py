@@ -351,8 +351,10 @@ class PPMBirefringenceMaximizationTester:
             )
 
             if result:
-                self.logger.debug(f"Acquired: {save_name} (exp={exposure_ms:.2f}ms)")
-                return output_path
+                # Use the path returned by the server (in case it differs)
+                actual_path = Path(result) if result else output_path
+                self.logger.debug(f"Acquired: {actual_path.name} (exp={exposure_ms:.2f}ms)")
+                return actual_path
             else:
                 self.logger.error(f"SNAP failed for {save_name}")
                 return None
@@ -618,12 +620,25 @@ class PPMBirefringenceMaximizationTester:
             Tuple of (diff_path, sum_path, normalized_path), any may be None on failure
         """
         try:
+            # Verify files exist before trying to read
+            # (there may be a delay between tifffile.imwrite and file visibility)
+            pos_exists = pos_path.exists() if isinstance(pos_path, Path) else Path(pos_path).exists()
+            neg_exists = neg_path.exists() if isinstance(neg_path, Path) else Path(neg_path).exists()
+
+            if not pos_exists or not neg_exists:
+                self.logger.error(f"Image files not found for angle {angle}:")
+                self.logger.error(f"  pos_path: {pos_path} (exists={pos_exists})")
+                self.logger.error(f"  neg_path: {neg_path} (exists={neg_exists})")
+                return None, None, None
+
             # Load images
             pos_img = cv2.imread(str(pos_path), cv2.IMREAD_UNCHANGED)
             neg_img = cv2.imread(str(neg_path), cv2.IMREAD_UNCHANGED)
 
             if pos_img is None or neg_img is None:
-                self.logger.error(f"Could not load images for angle {angle}")
+                self.logger.error(f"Could not load images for angle {angle} (cv2.imread returned None)")
+                self.logger.error(f"  pos_path: {pos_path} (loaded={pos_img is not None})")
+                self.logger.error(f"  neg_path: {neg_path} (loaded={neg_img is not None})")
                 return None, None, None
 
             # Log image properties for diagnostic purposes
