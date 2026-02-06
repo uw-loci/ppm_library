@@ -155,12 +155,17 @@ class PPMBirefringenceMaximizationTester:
         # Generate test angles (positive only - we'll acquire +/- pairs)
         self.test_angles = self._generate_test_angles()
 
-        # Output directory
+        # Output directory - always create a timestamped subdirectory
+        # Default parent is next to the config file (same as other calibrations)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if output_dir is None:
-            # Default to a subdirectory next to the config file
-            self.output_dir = Path(self.config_yaml).parent / "ppm_birefringence_tests" / f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            # Default to configurations folder / birefringence_tests / timestamped subfolder
+            parent_dir = Path(self.config_yaml).parent / "birefringence_tests"
         else:
-            self.output_dir = Path(output_dir)
+            # Use provided path as parent, create timestamped subfolder within it
+            parent_dir = Path(output_dir)
+
+        self.output_dir = parent_dir / f"birefringence_{timestamp}"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Setup logging
