@@ -108,7 +108,8 @@ class PPMBirefringenceMaximizationTester:
                  keep_images: bool = True,
                  calibration_exposures: Dict[float, float] = None,
                  target_intensity: int = 128,
-                 progress_callback: Optional[Callable[[int, int], None]] = None):
+                 progress_callback: Optional[Callable[[int, int], None]] = None,
+                 stage_move_callback: Optional[Callable[[], bool]] = None):
         """
         Initialize the birefringence maximization tester.
 
@@ -128,6 +129,10 @@ class PPMBirefringenceMaximizationTester:
             calibration_exposures: Optional dict to override default exposures
             target_intensity: Target median intensity for background calibration (0-255, default 128)
             progress_callback: Optional callback function(current, total) called after each angle pair
+            stage_move_callback: Optional callback for calibrate mode stage move prompt.
+                Called when background calibration completes and user needs to move stage.
+                Should return True when ready to continue, False to abort.
+                If None, uses input() for interactive prompting.
         """
         self.config_yaml = Path(config_yaml)
         self.angle_range = angle_range
@@ -137,6 +142,7 @@ class PPMBirefringenceMaximizationTester:
         self.keep_images = keep_images
         self.target_intensity = target_intensity
         self.progress_callback = progress_callback
+        self.stage_move_callback = stage_move_callback
 
         # Validate fixed mode
         if exposure_mode == "fixed" and fixed_exposure_ms is None:
@@ -523,12 +529,15 @@ class PPMBirefringenceMaximizationTester:
 
         return calibrated
 
-    def wait_for_user_stage_move(self):
+    def wait_for_user_stage_move(self) -> bool:
         """
         Pause and wait for user to move stage to tissue area.
 
         This is the transition between Phase 1 (calibration) and Phase 2 (acquisition)
         in CALIBRATE mode.
+
+        Returns:
+            True if user confirmed ready to continue, False if aborted.
         """
         self.logger.info("")
         self.logger.info("=" * 70)
@@ -541,11 +550,21 @@ class PPMBirefringenceMaximizationTester:
         self.logger.info("(e.g., collagen fibers, crystalline structures)")
         self.logger.info("")
 
-        input("Press ENTER when ready to continue with tissue acquisition...")
+        # Use callback if provided (for socket-based operation)
+        if self.stage_move_callback is not None:
+            self.logger.info("Waiting for stage move confirmation via callback...")
+            result = self.stage_move_callback()
+            if not result:
+                self.logger.warning("Stage move cancelled by user")
+                return False
+        else:
+            # Interactive mode - use input()
+            input("Press ENTER when ready to continue with tissue acquisition...")
 
         self.logger.info("")
         self.logger.info("Continuing with tissue acquisition...")
         self.logger.info("")
+        return True
 
     def acquire_angle_pair(self, angle: float) -> Tuple[Optional[Path], Optional[Path]]:
         """
@@ -1267,7 +1286,9 @@ class PPMBirefringenceMaximizationTester:
                 self.run_background_calibration()
 
                 # Pause for stage move
-                self.wait_for_user_stage_move()
+                if not self.wait_for_user_stage_move():
+                    self.logger.warning("Birefringence test aborted by user during stage move")
+                    return None
 
             # Main acquisition
             self.logger.info("")
@@ -1351,7 +1372,8 @@ def run_birefringence_maximization_test(
     keep_images: bool = True,
     calibration_exposures: Dict[float, float] = None,
     target_intensity: int = 128,
-    progress_callback: Optional[Callable[[int, int], None]] = None
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+    stage_move_callback: Optional[Callable[[], bool]] = None
 ) -> Optional[Path]:
     """
     Run birefringence maximization test programmatically.
@@ -1371,6 +1393,8 @@ def run_birefringence_maximization_test(
         calibration_exposures: Optional override for calibration exposures
         target_intensity: Target median intensity for background calibration (0-255, default 128)
         progress_callback: Optional callback function(current, total) for progress updates
+        stage_move_callback: Optional callback for calibrate mode stage move prompt.
+            Called when background calibration completes. Return True to continue, False to abort.
 
     Returns:
         Path to output directory on success, None on failure
@@ -1387,7 +1411,8 @@ def run_birefringence_maximization_test(
         keep_images=keep_images,
         calibration_exposures=calibration_exposures,
         target_intensity=target_intensity,
-        progress_callback=progress_callback
+        progress_callback=progress_callback,
+        stage_move_callback=stage_move_callback
     )
 
     return tester.run_test()
