@@ -33,10 +33,10 @@ from datetime import datetime
 import logging
 import cv2
 
-# Import from existing project infrastructure
-from smart_wsi_scanner.tests.test_client import QuPathTestClient
-from smart_wsi_scanner.server.protocol import ExtendedCommand, TCP_PORT
-from smart_wsi_scanner.config import ConfigManager
+# Import from modular packages
+from microscope_command_server.client import QuPathTestClient
+from microscope_command_server.server.protocol import ExtendedCommand, TCP_PORT
+from microscope_control.config import ConfigManager
 
 # Import matplotlib for visualization (optional)
 try:
@@ -151,8 +151,8 @@ class PPMBirefringenceMaximizationTester:
 
         # Output directory
         if output_dir is None:
-            config_dir = Path(__file__).parent.parent / "smart_wsi_scanner" / "configurations"
-            self.output_dir = config_dir / "ppm_birefringence_tests" / f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            # Default to a subdirectory next to the config file
+            self.output_dir = Path(self.config_yaml).parent / "ppm_birefringence_tests" / f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         else:
             self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
