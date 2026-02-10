@@ -120,10 +120,14 @@ class PPMBirefringenceMaximizationTester:
             port: qp_server port
             angle_range: (min_angle, max_angle) in degrees (default: -10 to +10)
             angle_step: Step size in degrees (default: 0.1)
-            exposure_mode: 'interpolate', 'calibrate', or 'fixed'
+            exposure_mode: 'interpolate', 'calibrate', 'fixed', or 'noise_aware'
                 - interpolate: Use calibration points and interpolate between them
                 - calibrate: Measure exposures on background first, then acquire
                 - fixed: Use single fixed exposure for all angles (set via fixed_exposure_ms)
+                - noise_aware: Use quality presets per angle type:
+                    * 'quality' mode for crossed (0 deg) - noise critical in dark regions
+                    * 'fast' mode for uncrossed (90 deg) - plenty of light
+                    * 'balanced' mode for birefringence (+/-7 deg)
             fixed_exposure_ms: Exposure time in ms for 'fixed' mode (required if mode='fixed')
             keep_images: If True, keep .tif files after analysis
             calibration_exposures: Optional dict to override default exposures
@@ -175,6 +179,12 @@ class PPMBirefringenceMaximizationTester:
         self.config_manager = ConfigManager()
         self.config = self.config_manager.load_config_file(str(self.config_yaml))
 
+        # Extract objective/detector for white balance calibration lookup
+        # These are optional - if not set, the server will fall back to hardware.settings
+        hardware_config = self.config.get("hardware", {})
+        self.objective_in_use = hardware_config.get("objective_in_use")
+        self.detector_in_use = hardware_config.get("detector_in_use")
+
         # Initialize client
         self.client = QuPathTestClient(host=host, port=port)
         self.connected = False
@@ -188,6 +198,13 @@ class PPMBirefringenceMaximizationTester:
         self.birefringence_metrics = {}  # angle -> metrics dict (raw difference)
         self.normalized_metrics = {}  # angle -> metrics dict (normalized difference)
 
+        # Intensity validation: track angles where +/- pair backgrounds don't match
+        # For birefringence analysis, equal background intensities are required
+        # to ensure the subtraction is meaningful.
+        self.intensity_mismatches = []  # List of {angle, pos_intensity, neg_intensity, rel_diff}
+        self.omitted_angles = []  # Angles excluded from analysis due to mismatch
+        self.intensity_tolerance = 0.05  # 5% relative difference threshold
+
         self.logger.info("PPM Birefringence Maximization Tester initialized")
         self.logger.info(f"  Angle range: {angle_range[0]} to {angle_range[1]} degrees")
         self.logger.info(f"  Step size: {angle_step} degrees")
@@ -197,6 +214,8 @@ class PPMBirefringenceMaximizationTester:
             self.logger.info(f"  Fixed exposure: {fixed_exposure_ms} ms (same for ALL angles)")
         if exposure_mode == "calibrate":
             self.logger.info(f"  Target intensity: {target_intensity} (0-255 scale)")
+        if exposure_mode == "noise_aware":
+            self.logger.info("  Quality presets: 'quality' at 0 deg, 'fast' at 90 deg, 'balanced' at +/-7 deg")
         self.logger.info(f"  Output: {self.output_dir}")
 
     def _generate_test_angles(self) -> List[float]:
@@ -264,6 +283,32 @@ class PPMBirefringenceMaximizationTester:
             except Exception as e:
                 self.logger.error(f"Error during disconnect: {e}")
 
+    def get_quality_mode_for_angle(self, angle: float) -> str:
+        """
+        Determine the quality mode preset for a given angle.
+
+        Used in 'noise_aware' exposure mode to select appropriate calibration
+        quality based on expected light levels at different polarizer angles.
+
+        Args:
+            angle: Rotation angle in degrees
+
+        Returns:
+            Quality mode string: 'quality', 'balanced', or 'fast'
+        """
+        abs_angle = abs(angle)
+
+        # Crossed polarizers (0 deg) - darkest, most noise-sensitive
+        if abs_angle < 2.0:
+            return 'quality'
+
+        # Uncrossed/parallel (near 90 deg) - brightest, noise less critical
+        if abs_angle > 80.0:
+            return 'fast'
+
+        # Birefringence angles (around +/-7 deg) - moderate light, balanced
+        return 'balanced'
+
     def get_exposure_for_angle(self, angle: float) -> float:
         """
         Get exposure time for a given angle.
@@ -271,6 +316,7 @@ class PPMBirefringenceMaximizationTester:
         In FIXED mode, returns the fixed exposure for all angles.
         In CALIBRATE mode, uses calibrated exposures if available.
         In INTERPOLATE mode, interpolates smoothly from calibration points.
+        In NOISE_AWARE mode, uses quality-preset-based exposure calculation.
 
         Args:
             angle: Rotation angle in degrees
@@ -284,6 +330,23 @@ class PPMBirefringenceMaximizationTester:
         if self.exposure_mode == "fixed" and self.fixed_exposure_ms is not None:
             return self.fixed_exposure_ms
 
+        # NOISE_AWARE mode: use quality preset for this angle
+        if self.exposure_mode == "noise_aware":
+            quality_mode = self.get_quality_mode_for_angle(angle)
+            # Get exposure based on quality preset's max_exposure_ms as guidance
+            # Higher quality = willing to use longer exposures
+            # These values are based on noise characterization data
+            quality_exposure_limits = {
+                'quality': 500.0,   # Willing to use longer exposures for best quality
+                'balanced': 200.0,  # Moderate exposure limit
+                'fast': 50.0,       # Short exposures, higher gain acceptable
+            }
+            max_exp = quality_exposure_limits.get(quality_mode, 200.0)
+
+            # Start with interpolated base exposure, then cap by quality limit
+            base_exp = self._interpolate_exposure(angle)
+            return min(base_exp, max_exp)
+
         # Check calibrated exposures first (from calibrate mode)
         if angle in self.calibrated_exposures:
             return self.calibrated_exposures[angle]
@@ -293,8 +356,25 @@ class PPMBirefringenceMaximizationTester:
         if angle in exp:
             return exp[angle]
 
-        # Smooth interpolation using log-space interpolation between known points
-        # Known calibration points: 0 deg (crossed, dark), +/-7 deg (optimal), 90 deg (parallel, bright)
+        # Use interpolation for unknown angles
+        return self._interpolate_exposure(angle)
+
+    def _interpolate_exposure(self, angle: float) -> float:
+        """
+        Interpolate exposure time for an angle not in calibration table.
+
+        Uses piecewise log-linear interpolation between known calibration points:
+        0 deg (crossed, dark), +/-7 deg (optimal), 90 deg (parallel, bright).
+
+        Args:
+            angle: Rotation angle in degrees
+
+        Returns:
+            Interpolated exposure time in milliseconds
+        """
+        import math
+
+        exp = self.CALIBRATION_EXPOSURES_MS
         abs_angle = abs(angle)
 
         # Get reference exposures
@@ -347,18 +427,22 @@ class PPMBirefringenceMaximizationTester:
             if angle_error > 0.5:
                 self.logger.warning(f"Large angle error: set={angle:.2f}, actual={actual_angle:.2f}")
 
-            # Acquire image
+            # Acquire image with white balance applied from PPM calibration
             output_path = self.output_dir / save_name
             result = self.client.test_snap(
                 angle=angle,
                 exposure_ms=exposure_ms,
-                output_path=str(output_path)
+                output_path=str(output_path),
+                white_balance=True,
+                yaml_path=str(self.config_yaml),
+                objective=self.objective_in_use,
+                detector=self.detector_in_use,
             )
 
             if result:
                 # Use the path returned by the server (in case it differs)
                 actual_path = Path(result) if result else output_path
-                self.logger.debug(f"Acquired: {actual_path.name} (exp={exposure_ms:.2f}ms)")
+                self.logger.debug(f"Acquired: {actual_path.name} (exp={exposure_ms:.2f}ms, WB=True)")
                 return actual_path
             else:
                 self.logger.error(f"SNAP failed for {save_name}")
@@ -423,14 +507,18 @@ class PPMBirefringenceMaximizationTester:
             final_intensity = 0
 
             for iteration in range(max_iterations):
-                # Acquire with current exposure
+                # Acquire with current exposure and white balance from PPM calibration
                 save_name = f"cal_{angle:+.2f}_iter{iteration}.tif"
                 output_path = cal_dir / save_name
 
                 result = self.client.test_snap(
                     angle=angle,
                     exposure_ms=current_exp,
-                    output_path=str(output_path)
+                    output_path=str(output_path),
+                    white_balance=True,
+                    yaml_path=str(self.config_yaml),
+                    objective=self.objective_in_use,
+                    detector=self.detector_in_use,
                 )
 
                 if not result or not output_path.exists():
@@ -602,6 +690,86 @@ class PPMBirefringenceMaximizationTester:
         neg_path = self.acquire_at_angle(negative_angle, neg_name, neg_exposure)
 
         return pos_path, neg_path
+
+    def validate_intensity_match(
+        self,
+        pos_path: Path,
+        neg_path: Path,
+        angle: float,
+        tolerance: float = None,
+    ) -> Tuple[bool, float, float, float]:
+        """
+        Validate that positive and negative angle images have matching background intensity.
+
+        For birefringence analysis, equal background intensities between +theta and -theta
+        are required to ensure the subtraction [I(+) - I(-)] produces meaningful results.
+        If backgrounds differ significantly, the subtraction will contain intensity bias
+        rather than pure birefringence signal.
+
+        Args:
+            pos_path: Path to +theta image
+            neg_path: Path to -theta image
+            angle: The angle value (positive)
+            tolerance: Maximum allowed relative intensity difference (default: self.intensity_tolerance)
+
+        Returns:
+            Tuple of (is_valid, pos_intensity, neg_intensity, rel_diff)
+            - is_valid: True if intensities match within tolerance
+            - pos_intensity: Median intensity of positive angle image
+            - neg_intensity: Median intensity of negative angle image
+            - rel_diff: Relative difference as fraction (0.05 = 5% difference)
+        """
+        if tolerance is None:
+            tolerance = self.intensity_tolerance
+
+        try:
+            pos_img = cv2.imread(str(pos_path), cv2.IMREAD_UNCHANGED)
+            neg_img = cv2.imread(str(neg_path), cv2.IMREAD_UNCHANGED)
+
+            if pos_img is None or neg_img is None:
+                self.logger.error(f"Could not load images for intensity validation at {angle} deg")
+                return False, 0.0, 0.0, 1.0
+
+            # Convert to grayscale and compute median intensity
+            pos_gray = self.rgb_to_gray(pos_img)
+            neg_gray = self.rgb_to_gray(neg_img)
+
+            pos_intensity = float(np.median(pos_gray))
+            neg_intensity = float(np.median(neg_gray))
+
+            # Calculate relative difference
+            avg_intensity = (pos_intensity + neg_intensity) / 2.0
+            if avg_intensity > 0:
+                rel_diff = abs(pos_intensity - neg_intensity) / avg_intensity
+            else:
+                rel_diff = 1.0  # Both near zero is problematic
+
+            is_valid = rel_diff <= tolerance
+
+            if not is_valid:
+                self.logger.warning(
+                    f"INTENSITY MISMATCH at +/-{angle:.2f} deg: "
+                    f"+{angle:.2f}={pos_intensity:.1f}, -{angle:.2f}={neg_intensity:.1f}, "
+                    f"diff={rel_diff:.1%} > {tolerance:.1%} tolerance"
+                )
+                # Track this mismatch
+                self.intensity_mismatches.append({
+                    'angle': angle,
+                    'pos_intensity': pos_intensity,
+                    'neg_intensity': neg_intensity,
+                    'rel_diff': rel_diff,
+                })
+            else:
+                self.logger.debug(
+                    f"Intensity match OK at +/-{angle:.2f} deg: "
+                    f"+={pos_intensity:.1f}, -={neg_intensity:.1f}, diff={rel_diff:.1%}"
+                )
+
+            return is_valid, pos_intensity, neg_intensity, rel_diff
+
+        except Exception as e:
+            self.logger.error(f"Error validating intensity at {angle} deg: {e}")
+            return False, 0.0, 0.0, 1.0
 
     def compute_difference_image(self, pos_path: Path, neg_path: Path,
                                  angle: float) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
@@ -835,6 +1003,10 @@ class PPMBirefringenceMaximizationTester:
         for both raw difference I(+)-I(-) and normalized difference
         [I(+)-I(-)]/[I(+)+I(-)].
 
+        Validates that +theta and -theta images have matching background intensities.
+        Angle pairs with significant intensity mismatch are flagged and omitted from
+        the analysis to ensure birefringence measurements are valid.
+
         Returns:
             Dictionary mapping angle -> metrics (combined raw and normalized)
         """
@@ -842,6 +1014,7 @@ class PPMBirefringenceMaximizationTester:
         self.logger.info("PAIRED IMAGE ACQUISITION FOR BIREFRINGENCE ANALYSIS")
         self.logger.info("=" * 70)
         self.logger.info("Computing: I(+)-I(-), I(+)+I(-), and [I(+)-I(-)]/[I(+)+I(-)]")
+        self.logger.info(f"Intensity tolerance: +/-{self.intensity_tolerance*100:.1f}% between +/- pairs")
 
         all_metrics = {}
 
@@ -857,6 +1030,22 @@ class PPMBirefringenceMaximizationTester:
                     'positive': pos_path,
                     'negative': neg_path
                 }
+
+                # Validate intensity matching between +theta and -theta
+                # This is critical for birefringence analysis - unequal backgrounds
+                # will bias the I(+) - I(-) subtraction
+                is_valid, pos_int, neg_int, rel_diff = self.validate_intensity_match(
+                    pos_path, neg_path, angle
+                )
+
+                if not is_valid:
+                    # Intensity mismatch - flag and skip analysis for this angle
+                    self.omitted_angles.append(angle)
+                    self.logger.warning(
+                        f"  OMITTING angle {angle:.2f} deg from analysis due to intensity mismatch"
+                    )
+                    # Still store images but don't compute metrics
+                    continue
 
                 # Compute difference, sum, and normalized difference
                 diff_path, sum_path, norm_path = self.compute_difference_image(
@@ -907,6 +1096,38 @@ class PPMBirefringenceMaximizationTester:
                     self.progress_callback(i + 1, len(self.test_angles))
                 except Exception as e:
                     self.logger.warning(f"Progress callback failed: {e}")
+
+        # Summary of intensity validation results
+        if self.intensity_mismatches:
+            self.logger.warning("")
+            self.logger.warning("=" * 70)
+            self.logger.warning("INTENSITY MISMATCH WARNING")
+            self.logger.warning("=" * 70)
+            self.logger.warning(
+                f"{len(self.intensity_mismatches)} angle pairs had intensity mismatch "
+                f"exceeding {self.intensity_tolerance*100:.1f}% tolerance:"
+            )
+            for mismatch in self.intensity_mismatches:
+                self.logger.warning(
+                    f"  +/-{mismatch['angle']:.2f} deg: "
+                    f"+={mismatch['pos_intensity']:.1f}, -={mismatch['neg_intensity']:.1f}, "
+                    f"diff={mismatch['rel_diff']*100:.2f}%"
+                )
+            self.logger.warning("")
+            self.logger.warning(
+                f"These {len(self.omitted_angles)} angles have been OMITTED from analysis: "
+                f"{[f'{a:.2f}' for a in self.omitted_angles]}"
+            )
+            self.logger.warning(
+                "To include these angles, run PPM White Balance calibration or "
+                "increase intensity_tolerance."
+            )
+        else:
+            self.logger.info("")
+            self.logger.info(
+                f"All {len(self.test_angles)} angle pairs passed intensity validation "
+                f"(tolerance: {self.intensity_tolerance*100:.1f}%)"
+            )
 
         return all_metrics
 
@@ -1086,12 +1307,20 @@ class PPMBirefringenceMaximizationTester:
             'angle_range': list(self.angle_range),
             'angle_step': self.angle_step,
             'exposure_mode': self.exposure_mode,
+            'intensity_tolerance': self.intensity_tolerance,
             'raw_metrics': {str(k): v for k, v in self.birefringence_metrics.items()},
             'normalized_metrics': {str(k): v for k, v in self.normalized_metrics.items()},
             'optimal_angle_raw': optimal_angle_raw,
             'optimal_metrics_raw': optimal_metrics_raw,
             'optimal_angle_normalized': optimal_angle_norm,
             'optimal_metrics_normalized': optimal_metrics_norm,
+            'intensity_validation': {
+                'tolerance': self.intensity_tolerance,
+                'mismatches': self.intensity_mismatches,
+                'omitted_angles': self.omitted_angles,
+                'total_angles_tested': len(self.test_angles),
+                'angles_included': len(self.test_angles) - len(self.omitted_angles),
+            },
         }
 
         with open(metrics_file, 'w') as f:
@@ -1139,6 +1368,30 @@ class PPMBirefringenceMaximizationTester:
             f.write(f"Step Size: {self.angle_step} degrees\n")
             f.write(f"Exposure Mode: {self.exposure_mode}\n")
             f.write(f"Images Retained: {self.keep_images}\n\n")
+
+            # Intensity validation section
+            f.write("=" * 70 + "\n")
+            f.write("INTENSITY VALIDATION\n")
+            f.write("=" * 70 + "\n\n")
+            f.write(f"Tolerance: +/-{self.intensity_tolerance*100:.1f}% relative difference\n")
+            f.write(f"Total angle pairs tested: {len(self.test_angles)}\n")
+            f.write(f"Angle pairs included in analysis: {len(self.test_angles) - len(self.omitted_angles)}\n")
+            f.write(f"Angle pairs omitted: {len(self.omitted_angles)}\n\n")
+
+            if self.intensity_mismatches:
+                f.write("WARNING: The following angles had intensity mismatch and were OMITTED:\n\n")
+                for mismatch in self.intensity_mismatches:
+                    f.write(
+                        f"  +/-{mismatch['angle']:.2f} deg: "
+                        f"+={mismatch['pos_intensity']:.1f}, -={mismatch['neg_intensity']:.1f}, "
+                        f"diff={mismatch['rel_diff']*100:.2f}%\n"
+                    )
+                f.write("\n")
+                f.write("To include these angles, either:\n")
+                f.write("  1. Run PPM White Balance calibration (WBPPM) first\n")
+                f.write("  2. Increase intensity_tolerance parameter\n\n")
+            else:
+                f.write("All angle pairs passed intensity validation.\n\n")
 
             f.write("=" * 70 + "\n")
             f.write("IMAGE PROCESSING METHODS\n")
@@ -1456,6 +1709,9 @@ Examples:
   # Fixed exposure for all angles (e.g., 25ms)
   python ppm_birefringence_maximization_test.py config.yml --mode fixed --exposure 25.0
 
+  # Noise-aware mode with quality presets per angle type
+  python ppm_birefringence_maximization_test.py config.yml --mode noise_aware
+
   # Custom angle range
   python ppm_birefringence_maximization_test.py config.yml --min-angle -5 --max-angle 5 --step 0.05
 
@@ -1472,11 +1728,12 @@ Examples:
                        help='qp_server host address')
     parser.add_argument('--port', type=int, default=5000,
                        help='qp_server port')
-    parser.add_argument('--mode', choices=['interpolate', 'calibrate', 'fixed'],
+    parser.add_argument('--mode', choices=['interpolate', 'calibrate', 'fixed', 'noise_aware'],
                        default='interpolate',
                        help='Exposure mode: interpolate (use calibration points), '
-                            'calibrate (measure exposures first), or '
-                            'fixed (same exposure for all angles)')
+                            'calibrate (measure exposures first), '
+                            'fixed (same exposure for all angles), or '
+                            'noise_aware (quality presets per angle type)')
     parser.add_argument('--exposure', type=float, default=None,
                        help='Fixed exposure time in ms (required for --mode fixed)')
     parser.add_argument('--min-angle', type=float, default=-10.0,
