@@ -434,7 +434,8 @@ class PPMBirefringenceMaximizationTester:
             return math.exp(log_exp)
 
     def acquire_at_angle(self, angle: float, save_name: str,
-                        exposure_ms: float = None) -> Optional[Path]:
+                        exposure_ms: float = None,
+                        wb_reference_angle: float = None) -> Optional[Path]:
         """
         Acquire a single image at specified angle using SNAP command.
 
@@ -442,6 +443,8 @@ class PPMBirefringenceMaximizationTester:
             angle: Rotation angle in degrees
             save_name: Filename for saved image
             exposure_ms: Exposure time (uses lookup if not provided)
+            wb_reference_angle: If provided, use this angle for WB calibration lookup
+                               instead of the capture angle. For calibration mode.
 
         Returns:
             Path to acquired image or None on failure
@@ -475,6 +478,7 @@ class PPMBirefringenceMaximizationTester:
                 yaml_path=str(self.config_yaml),
                 objective=self.objective_in_use,
                 detector=self.detector_in_use,
+                wb_reference_angle=wb_reference_angle,
             )
 
             if result:
@@ -545,7 +549,10 @@ class PPMBirefringenceMaximizationTester:
             final_intensity = 0
 
             for iteration in range(max_iterations):
-                # Acquire with current exposure and white balance from PPM calibration
+                # Acquire with current exposure and white balance from PPM calibration.
+                # Use a FIXED reference angle (7.0 deg) for WB lookup to ensure
+                # consistent color across all calibration images. The adaptive
+                # exposure controls intensity while WB ratios stay constant.
                 save_name = f"cal_{angle:+.2f}_iter{iteration}.tif"
                 output_path = cal_dir / save_name
 
@@ -557,6 +564,7 @@ class PPMBirefringenceMaximizationTester:
                     yaml_path=str(self.config_yaml),
                     objective=self.objective_in_use,
                     detector=self.detector_in_use,
+                    wb_reference_angle=7.0,  # Fixed WB for consistent color
                 )
 
                 if not result or not output_path.exists():
