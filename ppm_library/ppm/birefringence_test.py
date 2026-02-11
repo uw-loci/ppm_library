@@ -180,10 +180,46 @@ class PPMBirefringenceMaximizationTester:
         self.config = self.config_manager.load_config_file(str(self.config_yaml))
 
         # Extract objective/detector for white balance calibration lookup
-        # These are optional - if not set, the server will fall back to hardware.settings
+        # Check multiple locations in config, with fallback to defaults for JAI/PPM
+        microscope_config = self.config.get("microscope", {})
         hardware_config = self.config.get("hardware", {})
-        self.objective_in_use = hardware_config.get("objective_in_use")
-        self.detector_in_use = hardware_config.get("detector_in_use")
+
+        # Try microscope section first (where QuPath sets them), then hardware section
+        self.objective_in_use = microscope_config.get("objective_in_use")
+        if not self.objective_in_use:
+            self.objective_in_use = hardware_config.get("objective_in_use")
+
+        self.detector_in_use = microscope_config.get("detector_in_use")
+        if not self.detector_in_use:
+            self.detector_in_use = hardware_config.get("detector_in_use")
+
+        # If still None, try to infer from available hardware
+        # For PPM with JAI camera, use reasonable defaults
+        if not self.objective_in_use:
+            objectives = hardware_config.get("objectives", [])
+            # Prefer 20x POL objective for PPM if available
+            for obj in objectives:
+                obj_id = obj.get("id", "") if isinstance(obj, dict) else str(obj)
+                if "20X_POL" in obj_id.upper():
+                    self.objective_in_use = obj_id
+                    break
+            # Fall back to first objective if no POL found
+            if not self.objective_in_use and objectives:
+                first_obj = objectives[0]
+                self.objective_in_use = first_obj.get("id") if isinstance(first_obj, dict) else str(first_obj)
+
+        if not self.detector_in_use:
+            detectors = hardware_config.get("detectors", [])
+            # Prefer JAI detector for PPM if available
+            for det in detectors:
+                det_id = det if isinstance(det, str) else det.get("id", "")
+                if "JAI" in det_id.upper():
+                    self.detector_in_use = det_id
+                    break
+            # Fall back to first detector if no JAI found
+            if not self.detector_in_use and detectors:
+                first_det = detectors[0]
+                self.detector_in_use = first_det if isinstance(first_det, str) else first_det.get("id")
 
         # Initialize client
         self.client = QuPathTestClient(host=host, port=port)
@@ -216,6 +252,8 @@ class PPMBirefringenceMaximizationTester:
             self.logger.info(f"  Target intensity: {target_intensity} (0-255 scale)")
         if exposure_mode == "noise_aware":
             self.logger.info("  Quality presets: 'quality' at 0 deg, 'fast' at 90 deg, 'balanced' at +/-7 deg")
+        self.logger.info(f"  Objective: {self.objective_in_use}")
+        self.logger.info(f"  Detector: {self.detector_in_use}")
         self.logger.info(f"  Output: {self.output_dir}")
 
     def _generate_test_angles(self) -> List[float]:
