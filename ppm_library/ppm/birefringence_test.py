@@ -387,7 +387,11 @@ class PPMBirefringenceMaximizationTester:
 
         # Check calibrated exposures first (from calibrate mode)
         if angle in self.calibrated_exposures:
-            return self.calibrated_exposures[angle]
+            cal_exp = self.calibrated_exposures[angle]
+            # New format: dict with r, g, b keys - return G as the reference
+            if isinstance(cal_exp, dict):
+                return cal_exp.get('g', cal_exp.get('r', 50.0))
+            return cal_exp
 
         # Check exact match in calibration table
         exp = self.CALIBRATION_EXPOSURES_MS
@@ -450,7 +454,14 @@ class PPMBirefringenceMaximizationTester:
             self.logger.error("Not connected to server")
             return None
 
-        if exposure_ms is None:
+        # Check if we have per-channel calibration for this angle
+        per_channel_cal = None
+        if angle in self.calibrated_exposures:
+            cal_exp = self.calibrated_exposures[angle]
+            if isinstance(cal_exp, dict) and 'r' in cal_exp:
+                per_channel_cal = cal_exp
+
+        if exposure_ms is None and per_channel_cal is None:
             exposure_ms = self.get_exposure_for_angle(angle)
 
         try:
@@ -465,17 +476,33 @@ class PPMBirefringenceMaximizationTester:
             if angle_error > 0.5:
                 self.logger.warning(f"Large angle error: set={angle:.2f}, actual={actual_angle:.2f}")
 
-            # Acquire image with white balance applied from PPM calibration
+            # Acquire image
             output_path = self.output_dir / save_name
-            result = self.client.test_snap(
-                angle=angle,
-                exposure_ms=exposure_ms,
-                output_path=str(output_path),
-                white_balance=True,
-                yaml_path=str(self.config_yaml),
-                objective=self.objective_in_use,
-                detector=self.detector_in_use,
-            )
+
+            if per_channel_cal:
+                # Use calibrated per-channel exposures (from calibrate mode)
+                result = self.client.test_snap(
+                    angle=angle,
+                    exposure_ms=per_channel_cal['g'],  # G as reference
+                    output_path=str(output_path),
+                    white_balance=False,
+                    exp_r=per_channel_cal['r'],
+                    exp_g=per_channel_cal['g'],
+                    exp_b=per_channel_cal['b'],
+                )
+            else:
+                # Use WB calibration from YAML (interpolate mode)
+                if exposure_ms is None:
+                    exposure_ms = self.get_exposure_for_angle(angle)
+                result = self.client.test_snap(
+                    angle=angle,
+                    exposure_ms=exposure_ms,
+                    output_path=str(output_path),
+                    white_balance=True,
+                    yaml_path=str(self.config_yaml),
+                    objective=self.objective_in_use,
+                    detector=self.detector_in_use,
+                )
 
             if result:
                 # Use the path returned by the server (in case it differs)
@@ -528,103 +555,121 @@ class PPMBirefringenceMaximizationTester:
 
         # Adaptive exposure parameters
         tolerance = 0.05        # 5% tolerance (target +/- 5%)
-        max_iterations = 8      # Max iterations per angle (increased for tighter tolerance)
+        max_iterations = 12     # Max iterations per angle (more for per-channel convergence)
         min_exposure = 0.5      # Minimum exposure (ms)
         max_exposure = 500.0    # Maximum exposure (ms)
 
         for i, angle in enumerate(all_angles):
-            self.logger.info(f"[{i+1}/{len(all_angles)}] Calibrating {angle:+.2f} deg...")
+            self.logger.info(f"[{i+1}/{len(all_angles)}] Calibrating {angle:+.2f} deg (per-channel WB)...")
 
             # Move to angle first
             self.client.test_move_rotation(angle)
             time.sleep(0.3)
 
-            # Start with interpolated exposure as initial guess
-            current_exp = self.get_exposure_for_angle(angle)
-            final_exp = current_exp
+            # Start with equal per-channel exposures based on interpolated value
+            base_exp = self.get_exposure_for_angle(angle)
+            exp_r = base_exp
+            exp_g = base_exp
+            exp_b = base_exp
+
+            final_exposures = {'r': exp_r, 'g': exp_g, 'b': exp_b}
             final_intensity = 0
 
             for iteration in range(max_iterations):
-                # Acquire with current exposure and white balance from PPM calibration
+                # Acquire with per-channel exposures (direct control, no WB lookup)
                 save_name = f"cal_{angle:+.2f}_iter{iteration}.tif"
                 output_path = cal_dir / save_name
 
                 result = self.client.test_snap(
                     angle=angle,
-                    exposure_ms=current_exp,
+                    exposure_ms=exp_g,  # Use G as reference for logging
                     output_path=str(output_path),
-                    white_balance=True,
-                    yaml_path=str(self.config_yaml),
-                    objective=self.objective_in_use,
-                    detector=self.detector_in_use,
+                    white_balance=False,  # Don't use WB lookup
+                    exp_r=exp_r,
+                    exp_g=exp_g,
+                    exp_b=exp_b,
                 )
 
                 if not result or not output_path.exists():
                     self.logger.warning(f"  Iteration {iteration}: acquisition failed")
                     break
 
-                # Load and analyze image
+                # Load and analyze image (keep as color for per-channel analysis)
                 img = cv2.imread(str(output_path), cv2.IMREAD_UNCHANGED)
                 if img is None:
                     self.logger.warning(f"  Iteration {iteration}: could not load image")
                     break
 
-                # Convert to grayscale preserving bit depth
-                img = self.rgb_to_gray(img)
+                # Analyze per-channel intensities (OpenCV loads as BGR)
+                is_16bit = img.max() > 255
+                scale = 256.0 if is_16bit else 1.0
 
-                # Convert to 8-bit scale for consistent comparison
-                if img.max() > 255:
-                    # 16-bit image - scale to 8-bit
-                    median_intensity = float(np.median(img)) / 256.0
+                # Get median intensity for each channel
+                if len(img.shape) == 3:
+                    median_b = float(np.median(img[:, :, 0])) / scale
+                    median_g = float(np.median(img[:, :, 1])) / scale
+                    median_r = float(np.median(img[:, :, 2])) / scale
                 else:
-                    median_intensity = float(np.median(img))
+                    # Grayscale - treat as equal channels
+                    median_r = median_g = median_b = float(np.median(img)) / scale
+
+                # Overall intensity (average of channels)
+                median_intensity = (median_r + median_g + median_b) / 3.0
 
                 # Check for saturation
-                saturation_threshold = 250 if img.max() <= 255 else 64000
+                saturation_threshold = 250 if not is_16bit else 64000
                 saturated_fraction = np.sum(img >= saturation_threshold) / img.size
 
-                self.logger.debug(f"  Iter {iteration}: exp={current_exp:.2f}ms, "
-                                 f"median={median_intensity:.1f}, sat={saturated_fraction:.1%}")
+                self.logger.debug(
+                    f"  Iter {iteration}: R={exp_r:.1f}ms/{median_r:.1f}, "
+                    f"G={exp_g:.1f}ms/{median_g:.1f}, B={exp_b:.1f}ms/{median_b:.1f}, "
+                    f"avg={median_intensity:.1f}"
+                )
 
-                # Check if we've achieved target
-                error_ratio = abs(median_intensity - self.target_intensity) / self.target_intensity
-                if error_ratio <= tolerance and saturated_fraction < 0.01:
-                    self.logger.info(f"  Converged: exp={current_exp:.2f}ms, median={median_intensity:.1f}")
-                    final_exp = current_exp
+                # Check convergence: all channels within tolerance of target
+                r_error = abs(median_r - self.target_intensity) / self.target_intensity
+                g_error = abs(median_g - self.target_intensity) / self.target_intensity
+                b_error = abs(median_b - self.target_intensity) / self.target_intensity
+
+                if (r_error <= tolerance and g_error <= tolerance and
+                    b_error <= tolerance and saturated_fraction < 0.01):
+                    self.logger.info(
+                        f"  Converged: R={exp_r:.1f}ms, G={exp_g:.1f}ms, B={exp_b:.1f}ms "
+                        f"(intensities: R={median_r:.1f}, G={median_g:.1f}, B={median_b:.1f})"
+                    )
+                    final_exposures = {'r': exp_r, 'g': exp_g, 'b': exp_b}
                     final_intensity = median_intensity
                     break
 
-                # Adjust exposure for next iteration
+                # Adjust each channel independently
+                def adjust_exposure(current_exp, measured, target):
+                    if measured < 1:
+                        return min(current_exp * 4.0, max_exposure)
+                    elif measured > 0:
+                        new_exp = current_exp * (target / measured)
+                        return max(min_exposure, min(new_exp, max_exposure))
+                    return current_exp
+
+                # Handle saturation by reducing all channels
                 if saturated_fraction > 0.05:
-                    # Too much saturation - reduce exposure significantly
-                    new_exp = current_exp * 0.5
-                    self.logger.debug(f"  Reducing exposure due to saturation")
-                elif median_intensity < 5:
-                    # Very dark - increase exposure significantly
-                    new_exp = current_exp * 4.0
-                elif median_intensity > 0:
-                    # Proportional adjustment
-                    new_exp = current_exp * (self.target_intensity / median_intensity)
+                    exp_r *= 0.5
+                    exp_g *= 0.5
+                    exp_b *= 0.5
+                    self.logger.debug(f"  Reducing all exposures due to saturation")
                 else:
-                    new_exp = current_exp * 2.0
+                    exp_r = adjust_exposure(exp_r, median_r, self.target_intensity)
+                    exp_g = adjust_exposure(exp_g, median_g, self.target_intensity)
+                    exp_b = adjust_exposure(exp_b, median_b, self.target_intensity)
 
-                # Clamp to valid range
-                new_exp = max(min_exposure, min(new_exp, max_exposure))
-
-                # Check for convergence (not improving)
-                if abs(new_exp - current_exp) < 0.1:
-                    self.logger.debug(f"  Exposure converged at {current_exp:.2f}ms")
-                    final_exp = current_exp
-                    final_intensity = median_intensity
-                    break
-
-                final_exp = current_exp
+                final_exposures = {'r': exp_r, 'g': exp_g, 'b': exp_b}
                 final_intensity = median_intensity
-                current_exp = new_exp
 
-            # Save final calibrated exposure
-            calibrated[angle] = final_exp
-            self.logger.info(f"  Final: {final_exp:.2f}ms (median={final_intensity:.1f})")
+            # Save final calibrated exposures (store all three channels)
+            calibrated[angle] = final_exposures
+            self.logger.info(
+                f"  Final: R={final_exposures['r']:.2f}ms, G={final_exposures['g']:.2f}ms, "
+                f"B={final_exposures['b']:.2f}ms (avg intensity={final_intensity:.1f})"
+            )
 
             # Keep only the final calibration image (the converged one)
             final_cal_path = cal_dir / f"cal_{angle:+.2f}.tif"
@@ -654,11 +699,18 @@ class PPMBirefringenceMaximizationTester:
             json.dump({str(k): v for k, v in sorted(calibrated.items())}, f, indent=2)
         self.logger.info(f"Saved calibration data to {cal_file}")
 
-        # Log summary statistics
-        exposures = list(calibrated.values())
-        self.logger.info(f"\nCalibration summary:")
-        self.logger.info(f"  Exposure range: {min(exposures):.2f} - {max(exposures):.2f} ms")
-        self.logger.info(f"  Mean exposure: {np.mean(exposures):.2f} ms")
+        # Log summary statistics (handle per-channel format)
+        self.logger.info(f"\nCalibration summary (per-channel WB):")
+        if calibrated:
+            # Extract G channel exposures for summary (or compute means)
+            g_exposures = []
+            for exp_data in calibrated.values():
+                if isinstance(exp_data, dict):
+                    g_exposures.append(exp_data.get('g', 50.0))
+                else:
+                    g_exposures.append(exp_data)
+            self.logger.info(f"  G-channel exposure range: {min(g_exposures):.2f} - {max(g_exposures):.2f} ms")
+            self.logger.info(f"  G-channel mean exposure: {np.mean(g_exposures):.2f} ms")
 
         return calibrated
 
