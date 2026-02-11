@@ -671,6 +671,13 @@ class PPMBirefringenceMaximizationTester:
                 f"B={final_exposures['b']:.2f}ms (avg intensity={final_intensity:.1f})"
             )
 
+            # Send progress update to keep socket alive during Phase 1
+            if self.progress_callback:
+                try:
+                    self.progress_callback(i + 1, len(all_angles))
+                except Exception as e:
+                    self.logger.warning(f"Phase 1 progress callback failed: {e}")
+
             # Keep only the final calibration image (the converged one)
             final_cal_path = cal_dir / f"cal_{angle:+.2f}.tif"
             # Find the last iteration file and rename it
