@@ -19,7 +19,7 @@ Unified library for polarized light microscopy (PPM) - acquisition support and i
 - **Hardware Polarizer Calibration**: Find crossed polarizer positions
 - **PPM Rotation Testing**: Sensitivity testing and birefringence analysis
 - **Background Correction**: Flatfield correction utilities
-- **Debayering**: CPU and GPU-based Bayer pattern demosaicing
+- **Debayering**: CPU-based Bayer pattern demosaicing
 - **TIFF I/O**: TIFF writing with metadata support
 
 ### Image Analysis
@@ -41,11 +41,6 @@ Unified library for polarized light microscopy (PPM) - acquisition support and i
 **Standard installation:**
 ```bash
 pip install git+https://github.com/uw-loci/ppm_library.git
-```
-
-**With GPU support:**
-```bash
-pip install "git+https://github.com/uw-loci/ppm_library.git#egg=ppm-library[gpu]"
 ```
 
 ### Development Install (editable mode)
@@ -155,7 +150,6 @@ corrected = hue_shift(image, shift)
 
 ### `ppm_library.debayering` - Bayer Demosaicing
 - `CPUDebayer` - CPU-based Bayer pattern demosaicing
-- `GPUDebayer` - GPU-accelerated debayering (requires CuPy)
 
 ## Testing
 
