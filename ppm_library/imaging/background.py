@@ -93,6 +93,7 @@ class BackgroundCorrectionUtils:
         - "PPM_40x_2" -> "PPM_40x"
         - "CAMM_20x_1" -> "CAMM_20x"
         - "PPM_4x_3" -> "PPM_4x"
+        - "ppm_40x" -> "ppm_40x" (already modality, no acquisition number)
 
         Args:
             scan_type: Full scan type string
@@ -102,18 +103,26 @@ class BackgroundCorrectionUtils:
         """
         parts = scan_type.split("_")
 
-        # We need at least 3 parts: ScanType, Objective, and acquisition number
         if len(parts) >= 3:
-            # Extract the first two parts (ScanType and Objective)
-            scan_type_part = parts[0]  # e.g., "PPM" or "CAMM"
-            objective_part = parts[1]  # e.g., "10x", "20x", "40x"
+            # Full format: ScanType_Objective_AcquisitionNumber (e.g., "PPM_40x_1")
+            scan_type_part = parts[0]
+            objective_part = parts[1]
 
-            # Validate that the second part contains 'x' (indicating objective magnification)
             if "x" in objective_part.lower():
                 modality = f"{scan_type_part}_{objective_part}"
                 return modality
             else:
-                # If format doesn't match expected pattern, return full scan type
+                logger.warning(f"Unexpected scan type format: {scan_type}")
+                return scan_type
+        elif len(parts) == 2:
+            # Two-part format: ScanType_Objective (e.g., "ppm_40x")
+            # Already a modality string without acquisition number
+            scan_type_part = parts[0]
+            objective_part = parts[1]
+
+            if "x" in objective_part.lower():
+                return scan_type  # Already in modality format
+            else:
                 logger.warning(f"Unexpected scan type format: {scan_type}")
                 return scan_type
         else:
@@ -349,8 +358,11 @@ class BackgroundCorrectionUtils:
             # For debugging: check if background has illumination variation
             bg_std = bg_float.std()
             bg_variation = bg_std / bg_mean
-            if bg_variation < 0.05:  # Less than 5% variation
-                # Background is too uniform - may not be proper flatfield reference
+            if bg_variation < 0.02:  # Less than 2% variation
+                # Background is very uniform - flat-field correction will have
+                # minimal effect. Note: bright/uncrossed angles (e.g. 90deg)
+                # naturally have low variation (typically 3-5%) and this is
+                # expected -- the previous 5% threshold produced false positives.
                 import logging
 
                 logger = logging.getLogger(__name__)
