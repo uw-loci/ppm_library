@@ -88,6 +88,19 @@ from ppm_library.imaging import (
 # =============================================================================
 from ppm_library.analysis import analyze_ppm, PPMAnalysisResult
 
+# =============================================================================
+# Region-Based Analysis (for QuPath integration and standalone use)
+# =============================================================================
+from ppm_library.analysis import (
+    analyze_region,
+    compute_angles_from_rgb,
+    compute_ppm_positive_mask,
+    compute_masked_angles,
+    compute_angle_histogram,
+    compute_circular_statistics,
+    filter_angles_by_range,
+)
+
 __all__ = [
     # Hardware/Acquisition Support
     "PolarizerCalibrationUtils",
@@ -106,7 +119,15 @@ __all__ = [
     "hue_shift",
     "compute_hue_shift_from_reference",
     "preprocess_ppm_image",
-    # Analysis Workflows
+    # File-Based Analysis Workflows
     "analyze_ppm",
     "PPMAnalysisResult",
+    # Region-Based Analysis
+    "analyze_region",
+    "compute_angles_from_rgb",
+    "compute_ppm_positive_mask",
+    "compute_masked_angles",
+    "compute_angle_histogram",
+    "compute_circular_statistics",
+    "filter_angles_by_range",
 ]
