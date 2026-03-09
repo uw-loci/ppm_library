@@ -37,7 +37,7 @@ try:
     from ppm_library.ppm.sensitivity_analysis import PPMRotationAnalyzer
     ANALYZER_AVAILABLE = True
 except ImportError as e:
-    print(f"Warning: PPM rotation analyzer not found ({e}). Analysis will be skipped.")
+    logging.getLogger(__name__).debug("PPM rotation analyzer not available (%s). Analysis will be skipped.", e)
     ANALYZER_AVAILABLE = False
 
 
