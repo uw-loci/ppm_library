@@ -287,7 +287,7 @@ def run_filter(args):
     )
 
     angles = angle_result['angles']
-    mask = angle_result['mask']
+    mask = angle_result['valid_mask']
 
     # Apply ROI mask if provided
     if args.roi_mask:
