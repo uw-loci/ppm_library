@@ -50,7 +50,7 @@ result = analyze_ppm(
 print(f"Mean fiber angle: {result.mean_angle:.1f} degrees")
 """
 
-__version__ = "1.1.0"
+__version__ = "1.3.0"
 __author__ = "Mike Nelson, Bin Li, Jenu Chacko"
 
 # =============================================================================

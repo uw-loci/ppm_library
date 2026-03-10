@@ -55,6 +55,9 @@ dev = [
 "Homepage" = "https://github.com/your-org/ppm-library"
 "Bug Tracker" = "https://github.com/your-org/ppm-library/issues"
 
+[project.scripts]
+ppm-analyze = "ppm_library.analysis.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

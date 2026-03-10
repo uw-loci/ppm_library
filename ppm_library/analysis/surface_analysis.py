@@ -550,7 +550,7 @@ def analyze_perpendicularity(
         value_threshold=value_threshold,
     )
     fiber_angles = angle_result['angles']
-    fiber_mask = angle_result['mask']
+    fiber_mask = angle_result['valid_mask']
 
     # Apply biref mask if provided
     if biref_array is not None:
