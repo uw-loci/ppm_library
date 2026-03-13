@@ -50,7 +50,11 @@ result = analyze_ppm(
 print(f"Mean fiber angle: {result.mean_angle:.1f} degrees")
 """
 
-__version__ = "1.3.0"
+try:
+    from importlib.metadata import version as _get_version
+    __version__ = _get_version("ppm-library")
+except Exception:
+    __version__ = "0.0.0.dev"
 __author__ = "Mike Nelson, Bin Li, Jenu Chacko"
 
 # =============================================================================
