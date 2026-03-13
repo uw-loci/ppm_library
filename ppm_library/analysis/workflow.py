@@ -13,6 +13,7 @@ import numpy as np
 from scipy import ndimage
 from skimage import io, color
 
+import ppm_library
 from ppm_library.calibration.radial import RadialCalibrator, RadialCalibrationResult
 from ppm_library.imaging.ppm_image import PPMImage, AngleMap
 
@@ -81,6 +82,8 @@ class PPMAnalysisResult:
             cal_inv_intercept=np.array([self.calibration.inv_intercept]),
             cal_r_squared=np.array([self.calibration.r_squared]),
             cal_hue_offset=np.array([self.calibration.hue_offset]),
+            # Provenance
+            ppm_library_version=np.array([ppm_library.__version__]),
         )
 
     def print_summary(self) -> None:

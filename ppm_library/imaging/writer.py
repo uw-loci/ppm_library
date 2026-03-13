@@ -6,11 +6,14 @@ image processing operations such as birefringence calculations for PPM imaging.
 """
 
 import pathlib
+import platform
 import shutil
 from typing import Optional, Dict
 import numpy as np
 import tifffile as tf
 import logging
+
+import ppm_library
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +56,16 @@ class TifWriterUtils:
             if compression is not None:
                 options["compression"] = compression.lower()
 
+            # Embed provenance in ImageDescription tag
+            description = (
+                f"ppm_library={ppm_library.__version__}"
+                f" python={platform.python_version()}"
+            )
+
             tif.write(
                 data,
                 resolution=(1e4 / pixel_size_um, 1e4 / pixel_size_um),
+                description=description,
                 **options,
             )
 
