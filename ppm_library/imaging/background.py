@@ -202,22 +202,15 @@ class BackgroundCorrectionUtils:
                     bg_float = background_img.astype(np.float32)
                     bg_mean_all = bg_float.mean()
 
-                    if angle == 90.0:  # Brightfield
-                        # Scale to make background bright
-                        target_intensity = 240.0
-                        scaling_factor = target_intensity / bg_mean_all if bg_mean_all > 0 else 1.0
-                        if logger:
-                            logger.info(f"    Background mean intensity at 90 deg: {bg_mean_all:.1f}")
-                    else:  # Polarized angles (-7, 0, 7)
-                        # Preserve the physical intensity level - only correct spatial variation
-                        scaling_factor = 1.0  # No intensity scaling - preserve polarization physics
-                        if logger:
-                            logger.info(
-                                f"    Background mean intensity at {angle} deg: {bg_mean_all:.1f}"
-                            )
-                            logger.info(
-                                f"    No intensity scaling for {angle} deg (preserves polarization physics)"
-                            )
+                    # No intensity scaling - flat-field formula (img * bg_mean/bg_pixel)
+                    # already preserves overall brightness while correcting spatial variation.
+                    # Previous 240-target scaling for 90 deg caused tiling artifacts by pushing
+                    # corrected edge pixels near saturation.
+                    scaling_factor = 1.0
+                    if logger:
+                        logger.info(
+                            f"    Background mean intensity at {angle} deg: {bg_mean_all:.1f}"
+                        )
 
                     scaling_factors[angle] = scaling_factor
 
