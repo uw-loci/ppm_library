@@ -241,6 +241,13 @@ class PPMBirefringenceMaximizationTester:
         self.omitted_angles = []  # Angles excluded from analysis due to mismatch
         self.intensity_tolerance = 0.05  # 5% relative difference threshold
 
+        # Saturation tracking: detect clipped pixels in source images.
+        # When birefringent tissue pushes pixel values to the detector ceiling,
+        # I(+) - I(-) is underestimated, potentially recommending wrong angles.
+        self.saturation_data = {}  # angle -> {pos_fraction, neg_fraction, max_fraction, ...}
+        self.saturated_angles = []  # Angles with significant saturation (>threshold)
+        self.saturation_threshold_frac = 0.01  # 1% of pixels = "saturated"
+
         self.logger.info("PPM Birefringence Maximization Tester initialized")
         self.logger.info(f"  Angle range: {angle_range[0]} to {angle_range[1]} degrees")
         self.logger.info(f"  Step size: {angle_step} degrees")
@@ -868,6 +875,45 @@ class PPMBirefringenceMaximizationTester:
             self.logger.error(f"Error validating intensity at {angle} deg: {e}")
             return False, 0.0, 0.0, 1.0
 
+    def check_image_saturation(self, image_path: Path) -> Tuple[float, float]:
+        """
+        Check an acquired image for pixel saturation.
+
+        Saturation occurs when pixel values hit the detector ceiling, clipping
+        the true signal. For birefringence measurements, saturated pixels in
+        I(+) or I(-) cause the difference to be underestimated.
+
+        Uses the same thresholds as background calibration:
+        - 8-bit: >= 250 (out of 255)
+        - 16-bit: >= 64000 (out of 65535)
+
+        Args:
+            image_path: Path to the image file
+
+        Returns:
+            Tuple of (saturated_fraction, max_pixel_value)
+            - saturated_fraction: fraction of pixels at/near saturation (0.0-1.0)
+            - max_pixel_value: maximum pixel value in the image
+        """
+        try:
+            img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+            if img is None:
+                return 0.0, 0.0
+
+            is_16bit = img.dtype == np.uint16
+            sat_threshold = 64000 if is_16bit else 250
+
+            saturated_pixels = np.sum(img >= sat_threshold)
+            total_pixels = img.size
+            sat_fraction = float(saturated_pixels) / float(total_pixels)
+            max_val = float(np.max(img))
+
+            return sat_fraction, max_val
+
+        except Exception as e:
+            self.logger.error(f"Error checking saturation: {e}")
+            return 0.0, 0.0
+
     def compute_difference_image(self, pos_path: Path, neg_path: Path,
                                  angle: float) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
         """
@@ -1128,6 +1174,32 @@ class PPMBirefringenceMaximizationTester:
                     'negative': neg_path
                 }
 
+                # Check saturation on source images BEFORE computing metrics.
+                # Saturated pixels clip the true signal, causing I(+)-I(-) to be
+                # underestimated. This can lead to recommending wrong angles.
+                pos_sat_frac, pos_max_val = self.check_image_saturation(pos_path)
+                neg_sat_frac, neg_max_val = self.check_image_saturation(neg_path)
+                max_sat_frac = max(pos_sat_frac, neg_sat_frac)
+
+                self.saturation_data[angle] = {
+                    'pos_fraction': pos_sat_frac,
+                    'neg_fraction': neg_sat_frac,
+                    'max_fraction': max_sat_frac,
+                    'pos_max_val': pos_max_val,
+                    'neg_max_val': neg_max_val,
+                }
+
+                if max_sat_frac > self.saturation_threshold_frac:
+                    self.saturated_angles.append(angle)
+                    self.logger.warning(
+                        f"  SATURATION at +/-{angle:.2f} deg: "
+                        f"pos={pos_sat_frac:.2%}, neg={neg_sat_frac:.2%}"
+                    )
+                    self.logger.warning(
+                        f"  Max pixel values: pos={pos_max_val:.0f}, neg={neg_max_val:.0f} "
+                        f"-- birefringence signal may be UNDERESTIMATED"
+                    )
+
                 # Validate intensity matching between +theta and -theta
                 # This is critical for birefringence analysis - unequal backgrounds
                 # will bias the I(+) - I(-) subtraction
@@ -1180,6 +1252,11 @@ class PPMBirefringenceMaximizationTester:
                     combined.update(raw_metrics)
                 if norm_path:
                     combined.update(norm_metrics)
+                # Include saturation info so downstream consumers can see it
+                sat_info = self.saturation_data.get(angle, {})
+                combined['saturated_fraction'] = sat_info.get('max_fraction', 0.0)
+                combined['pos_saturated_fraction'] = sat_info.get('pos_fraction', 0.0)
+                combined['neg_saturated_fraction'] = sat_info.get('neg_fraction', 0.0)
                 all_metrics[angle] = combined
 
                 if not diff_path and not norm_path:
@@ -1226,11 +1303,48 @@ class PPMBirefringenceMaximizationTester:
                 f"(tolerance: {self.intensity_tolerance*100:.1f}%)"
             )
 
+        # Saturation summary
+        if self.saturated_angles:
+            self.logger.warning("")
+            self.logger.warning("=" * 70)
+            self.logger.warning("SATURATION WARNING")
+            self.logger.warning("=" * 70)
+            self.logger.warning(
+                f"{len(self.saturated_angles)} angle(s) had significant pixel saturation "
+                f"(>{self.saturation_threshold_frac*100:.0f}% of pixels near detector ceiling):"
+            )
+            for sat_angle in sorted(self.saturated_angles):
+                sat = self.saturation_data[sat_angle]
+                self.logger.warning(
+                    f"  +/-{sat_angle:.2f} deg: "
+                    f"pos={sat['pos_fraction']:.2%}, neg={sat['neg_fraction']:.2%}, "
+                    f"max_vals: pos={sat['pos_max_val']:.0f}, neg={sat['neg_max_val']:.0f}"
+                )
+            self.logger.warning("")
+            self.logger.warning(
+                "Saturated pixels clip the birefringence signal, causing I(+)-I(-) "
+                "to be UNDERESTIMATED. The recommended angle may be incorrect."
+            )
+            self.logger.warning(
+                "To fix: lower target intensity, use shorter exposures, or use "
+                "calibrate mode with a lower target (e.g., 100 instead of 128)."
+            )
+        else:
+            self.logger.info("")
+            self.logger.info(
+                f"No saturation detected at any angle "
+                f"(threshold: {self.saturation_threshold_frac*100:.0f}% of pixels)"
+            )
+
         return all_metrics
 
     def find_optimal_angle(self, use_normalized: bool = False) -> Tuple[float, Dict]:
         """
         Find the angle that maximizes birefringence signal.
+
+        If the optimal angle has significant pixel saturation, also identifies
+        the best non-saturated alternative and adds saturation metadata to the
+        returned metrics dict.
 
         Args:
             use_normalized: If True, find optimal based on normalized metrics.
@@ -1238,6 +1352,11 @@ class PPMBirefringenceMaximizationTester:
 
         Returns:
             Tuple of (optimal_angle, metrics_at_optimal)
+            The metrics dict includes additional keys when saturation is detected:
+            - 'optimal_saturated': bool - True if optimal angle has saturation
+            - 'optimal_saturation_frac': float - saturation fraction at optimal
+            - 'best_non_saturated_angle': float - best clean alternative (if any)
+            - 'best_non_saturated_signal': float - signal at clean alternative
         """
         metrics_dict = self.normalized_metrics if use_normalized else self.birefringence_metrics
         signal_key = 'norm_mean_signal' if use_normalized else 'mean_signal'
@@ -1249,13 +1368,50 @@ class PPMBirefringenceMaximizationTester:
         best_angle = 0.0
         best_signal = 0.0
 
+        # Also track best non-saturated angle
+        best_clean_angle = None
+        best_clean_signal = 0.0
+
         for angle, metrics in metrics_dict.items():
             signal = metrics.get(signal_key, 0)
             if signal > best_signal:
                 best_signal = signal
                 best_angle = angle
 
-        return best_angle, metrics_dict.get(best_angle, {})
+            # Track best angle without significant saturation
+            sat_frac = self.saturation_data.get(angle, {}).get('max_fraction', 0.0)
+            if sat_frac <= self.saturation_threshold_frac and signal > best_clean_signal:
+                best_clean_signal = signal
+                best_clean_angle = angle
+
+        result_metrics = dict(metrics_dict.get(best_angle, {}))
+
+        # Add saturation awareness to returned metrics
+        best_sat = self.saturation_data.get(best_angle, {}).get('max_fraction', 0.0)
+        result_metrics['optimal_saturated'] = best_sat > self.saturation_threshold_frac
+        result_metrics['optimal_saturation_frac'] = best_sat
+
+        if best_sat > self.saturation_threshold_frac:
+            method = "Normalized" if use_normalized else "Raw"
+            self.logger.warning(
+                f"{method} optimal angle {best_angle:.2f} deg has "
+                f"{best_sat:.1%} saturated pixels -- signal may be underestimated"
+            )
+
+            if best_clean_angle is not None and best_clean_angle != best_angle:
+                result_metrics['best_non_saturated_angle'] = best_clean_angle
+                result_metrics['best_non_saturated_signal'] = best_clean_signal
+                self.logger.warning(
+                    f"Best non-saturated alternative: {best_clean_angle:.2f} deg "
+                    f"(signal={best_clean_signal:.1f})"
+                )
+            elif best_clean_angle is None:
+                self.logger.warning(
+                    "ALL tested angles have saturation -- lower target intensity "
+                    "or use shorter exposures for reliable results"
+                )
+
+        return best_angle, result_metrics
 
     def generate_visualization(self):
         """Generate visualization plots comparing raw and normalized birefringence."""
@@ -1287,15 +1443,29 @@ class PPMBirefringenceMaximizationTester:
         optimal_angle_raw, optimal_metrics_raw = self.find_optimal_angle(use_normalized=False)
         optimal_angle_norm, optimal_metrics_norm = self.find_optimal_angle(use_normalized=True)
 
+        # Identify saturated angles for marking on plots
+        sat_marker_angles = [a for a in self.saturated_angles if a in angles]
+        sat_marker_raw = [self.birefringence_metrics[a].get('mean_signal', 0) for a in sat_marker_angles]
+        sat_marker_norm_angles = [a for a in self.saturated_angles if a in norm_angles]
+        sat_marker_norm = [self.normalized_metrics[a].get('norm_mean_signal', 0) * 100
+                          for a in sat_marker_norm_angles] if self.normalized_metrics else []
+
         # Plot 1: Raw Signal vs Angle I(+) - I(-)
         ax = axes[0, 0]
         ax.plot(angles, mean_signals, 'b-o', label='Sample Mean', markersize=3, linewidth=1.5)
         ax.plot(angles, p95_signals, 'r-s', label='Sample P95', markersize=3, linewidth=1, alpha=0.7)
         ax.axvline(x=optimal_angle_raw, color='green', linestyle='--', linewidth=2,
                    label=f'Optimal: {optimal_angle_raw:.2f} deg')
+        # Mark saturated angles with red X
+        if sat_marker_angles:
+            ax.scatter(sat_marker_angles, sat_marker_raw, c='red', marker='x', s=100,
+                      zorder=5, linewidths=2, label=f'Saturated ({len(sat_marker_angles)})')
         ax.set_xlabel('Angle (degrees)')
         ax.set_ylabel('Sample Signal Intensity (Otsu)')
-        ax.set_title('RAW DIFFERENCE: I(+) - I(-)\n(Sample region via Otsu threshold)')
+        raw_title = 'RAW DIFFERENCE: I(+) - I(-)\n(Sample region via Otsu threshold)'
+        if optimal_metrics_raw.get('optimal_saturated', False):
+            raw_title += '\n** OPTIMAL ANGLE HAS SATURATION **'
+        ax.set_title(raw_title)
         ax.legend(loc='upper right')
         ax.grid(True, alpha=0.3)
 
@@ -1306,9 +1476,16 @@ class PPMBirefringenceMaximizationTester:
             ax.plot(norm_angles, norm_p95_signals, 'r-s', label='Sample P95 (%)', markersize=3, linewidth=1, alpha=0.7)
             ax.axvline(x=optimal_angle_norm, color='purple', linestyle='--', linewidth=2,
                        label=f'Optimal: {optimal_angle_norm:.2f} deg')
+            # Mark saturated angles with red X
+            if sat_marker_norm_angles:
+                ax.scatter(sat_marker_norm_angles, sat_marker_norm, c='red', marker='x', s=100,
+                          zorder=5, linewidths=2, label=f'Saturated ({len(sat_marker_norm_angles)})')
         ax.set_xlabel('Angle (degrees)')
         ax.set_ylabel('Sample Normalized Signal (%)')
-        ax.set_title('NORMALIZED: [I(+)-I(-)]/[I(+)+I(-)]\n(Sample region via Otsu threshold)')
+        norm_title = 'NORMALIZED: [I(+)-I(-)]/[I(+)+I(-)]\n(Sample region via Otsu threshold)'
+        if optimal_metrics_norm.get('optimal_saturated', False):
+            norm_title += '\n** OPTIMAL ANGLE HAS SATURATION **'
+        ax.set_title(norm_title)
         ax.legend(loc='upper right')
         ax.grid(True, alpha=0.3)
 
@@ -1381,7 +1558,10 @@ class PPMBirefringenceMaximizationTester:
             ax.text(0.5, 0.5, 'No 0 deg image', ha='center', va='center', transform=ax.transAxes)
             ax.set_title('Sanity Check: 0 deg')
 
-        plt.suptitle('PPM BIREFRINGENCE: RAW vs NORMALIZED COMPARISON', fontsize=16, fontweight='bold')
+        suptitle = 'PPM BIREFRINGENCE: RAW vs NORMALIZED COMPARISON'
+        if self.saturated_angles:
+            suptitle += f'\n[WARNING: {len(self.saturated_angles)} angle(s) had pixel saturation]'
+        plt.suptitle(suptitle, fontsize=16, fontweight='bold')
         plt.tight_layout()
 
         plot_path = self.output_dir / 'birefringence_analysis.png'
@@ -1417,6 +1597,19 @@ class PPMBirefringenceMaximizationTester:
                 'omitted_angles': self.omitted_angles,
                 'total_angles_tested': len(self.test_angles),
                 'angles_included': len(self.test_angles) - len(self.omitted_angles),
+            },
+            'saturation_analysis': {
+                'threshold_fraction': self.saturation_threshold_frac,
+                'total_angles_tested': len(self.test_angles),
+                'angles_with_saturation': len(self.saturated_angles),
+                'saturated_angle_list': [round(a, 2) for a in sorted(self.saturated_angles)],
+                'per_angle_data': {str(k): v for k, v in self.saturation_data.items()},
+                'optimal_raw_saturated': optimal_metrics_raw.get('optimal_saturated', False),
+                'optimal_norm_saturated': optimal_metrics_norm.get('optimal_saturated', False),
+                'best_non_saturated_raw': optimal_metrics_raw.get(
+                    'best_non_saturated_angle', None),
+                'best_non_saturated_norm': optimal_metrics_norm.get(
+                    'best_non_saturated_angle', None),
             },
         }
 
@@ -1489,6 +1682,67 @@ class PPMBirefringenceMaximizationTester:
                 f.write("  2. Increase intensity_tolerance parameter\n\n")
             else:
                 f.write("All angle pairs passed intensity validation.\n\n")
+
+            # Saturation analysis section
+            f.write("=" * 70 + "\n")
+            f.write("SATURATION ANALYSIS\n")
+            f.write("=" * 70 + "\n\n")
+            f.write(f"Saturation threshold: {self.saturation_threshold_frac*100:.0f}% of pixels "
+                    f"at/near detector ceiling\n")
+            f.write(f"Angles with saturation: {len(self.saturated_angles)} of "
+                    f"{len(self.test_angles)}\n\n")
+
+            if self.saturated_angles:
+                f.write("WARNING: Saturated pixels clip the true birefringence signal.\n")
+                f.write("When I(+) or I(-) hits the detector ceiling, the difference\n")
+                f.write("I(+)-I(-) is LESS than reality. This means the birefringence\n")
+                f.write("signal at saturated angles is underestimated, and the\n")
+                f.write("recommended angle may be incorrect.\n\n")
+
+                f.write(f"{'Angle':>8}  {'Pos Sat%':>10}  {'Neg Sat%':>10}  "
+                        f"{'Pos Max':>10}  {'Neg Max':>10}\n")
+                f.write("-" * 55 + "\n")
+                for sat_angle in sorted(self.saturated_angles):
+                    sd = self.saturation_data[sat_angle]
+                    f.write(
+                        f"{sat_angle:>8.2f}  {sd['pos_fraction']*100:>9.2f}%  "
+                        f"{sd['neg_fraction']*100:>9.2f}%  "
+                        f"{sd['pos_max_val']:>10.0f}  {sd['neg_max_val']:>10.0f}\n"
+                    )
+                f.write("\n")
+
+                # Report on optimal angle saturation
+                if optimal_metrics_raw.get('optimal_saturated', False):
+                    f.write(f"** Raw optimal angle ({optimal_angle_raw:.2f} deg) is SATURATED **\n")
+                    alt = optimal_metrics_raw.get('best_non_saturated_angle')
+                    if alt is not None:
+                        alt_sig = optimal_metrics_raw.get('best_non_saturated_signal', 0)
+                        f.write(f"   Best non-saturated alternative: {alt:.2f} deg "
+                                f"(signal={alt_sig:.1f})\n")
+                    else:
+                        f.write("   No non-saturated angles available.\n")
+                    f.write("\n")
+
+                if optimal_metrics_norm.get('optimal_saturated', False):
+                    f.write(f"** Normalized optimal angle ({optimal_angle_norm:.2f} deg) "
+                            f"is SATURATED **\n")
+                    alt = optimal_metrics_norm.get('best_non_saturated_angle')
+                    if alt is not None:
+                        alt_sig = optimal_metrics_norm.get('best_non_saturated_signal', 0)
+                        f.write(f"   Best non-saturated alternative: {alt:.2f} deg "
+                                f"(signal={alt_sig:.1f})\n")
+                    else:
+                        f.write("   No non-saturated angles available.\n")
+                    f.write("\n")
+
+                f.write("RECOMMENDATIONS:\n")
+                f.write("  1. Lower target intensity (e.g., 100 instead of 128)\n")
+                f.write("  2. Use calibrate mode with reduced target\n")
+                f.write("  3. Use shorter fixed exposures\n")
+                f.write("  4. Rerun test after adjusting to verify no saturation\n\n")
+            else:
+                f.write("No saturation detected at any tested angle.\n")
+                f.write("Birefringence measurements are reliable.\n\n")
 
             f.write("=" * 70 + "\n")
             f.write("IMAGE PROCESSING METHODS\n")
@@ -1571,28 +1825,38 @@ class PPMBirefringenceMaximizationTester:
             f.write("RAW DIFFERENCE RESULTS TABLE\n")
             f.write("=" * 70 + "\n\n")
 
-            f.write(f"{'Angle':>8}  {'Mean':>10}  {'Max':>10}  {'P95':>10}  {'S/B Ratio':>10}\n")
-            f.write("-" * 55 + "\n")
+            f.write(f"{'Angle':>8}  {'Mean':>10}  {'Max':>10}  {'P95':>10}  "
+                    f"{'S/B Ratio':>10}  {'Sat%':>7}\n")
+            f.write("-" * 62 + "\n")
 
             for angle in sorted(self.birefringence_metrics.keys()):
                 m = self.birefringence_metrics[angle]
+                sat_pct = self.saturation_data.get(angle, {}).get('max_fraction', 0.0) * 100
+                sat_marker = " *" if sat_pct > self.saturation_threshold_frac * 100 else ""
                 f.write(f"{angle:>8.2f}  {m.get('mean_signal', 0):>10.1f}  "
                        f"{m.get('max_signal', 0):>10.1f}  {m.get('p95_signal', 0):>10.1f}  "
-                       f"{m.get('signal_to_bg_ratio', 0):>10.2f}\n")
+                       f"{m.get('signal_to_bg_ratio', 0):>10.2f}  {sat_pct:>6.2f}{sat_marker}\n")
 
             f.write("\n")
             f.write("=" * 70 + "\n")
             f.write("NORMALIZED DIFFERENCE RESULTS TABLE\n")
             f.write("=" * 70 + "\n\n")
 
-            f.write(f"{'Angle':>8}  {'Mean%':>10}  {'Max%':>10}  {'P95%':>10}  {'S/B Ratio':>10}\n")
-            f.write("-" * 55 + "\n")
+            f.write(f"{'Angle':>8}  {'Mean%':>10}  {'Max%':>10}  {'P95%':>10}  "
+                    f"{'S/B Ratio':>10}  {'Sat%':>7}\n")
+            f.write("-" * 62 + "\n")
 
             for angle in sorted(self.normalized_metrics.keys()):
                 m = self.normalized_metrics[angle]
+                sat_pct = self.saturation_data.get(angle, {}).get('max_fraction', 0.0) * 100
+                sat_marker = " *" if sat_pct > self.saturation_threshold_frac * 100 else ""
                 f.write(f"{angle:>8.2f}  {m.get('norm_mean_signal', 0)*100:>10.2f}  "
                        f"{m.get('norm_max_signal', 0)*100:>10.2f}  {m.get('norm_p95_signal', 0)*100:>10.2f}  "
-                       f"{m.get('norm_signal_to_bg_ratio', 0):>10.2f}\n")
+                       f"{m.get('norm_signal_to_bg_ratio', 0):>10.2f}  {sat_pct:>6.2f}{sat_marker}\n")
+
+            if self.saturated_angles:
+                f.write("\n* = angle has significant pixel saturation "
+                        "(signal may be underestimated)\n")
 
             f.write("\n")
             f.write("=" * 70 + "\n")
@@ -1687,6 +1951,13 @@ class PPMBirefringenceMaximizationTester:
             self.logger.info(f"  Optimal angle: {optimal_raw:.2f} degrees")
             self.logger.info(f"  Mean signal: {metrics_raw.get('mean_signal', 0):.1f}")
             self.logger.info(f"  P95 signal: {metrics_raw.get('p95_signal', 0):.1f}")
+            if metrics_raw.get('optimal_saturated', False):
+                self.logger.warning(f"  ** SATURATED ({metrics_raw.get('optimal_saturation_frac', 0):.1%}) "
+                                    f"-- signal may be underestimated **")
+                alt = metrics_raw.get('best_non_saturated_angle')
+                if alt is not None:
+                    self.logger.info(f"  Best non-saturated: {alt:.2f} deg "
+                                    f"(signal={metrics_raw.get('best_non_saturated_signal', 0):.1f})")
 
             self.logger.info(f"\nNORMALIZED DIFFERENCE [I(+)-I(-)]/[I(+)+I(-)]:")
             self.logger.info(f"  Optimal angle: {optimal_norm:.2f} degrees")
@@ -1694,6 +1965,13 @@ class PPMBirefringenceMaximizationTester:
             norm_p95 = metrics_norm.get('norm_p95_signal', 0) * 100
             self.logger.info(f"  Mean signal: {norm_mean:.2f}%")
             self.logger.info(f"  P95 signal: {norm_p95:.2f}%")
+            if metrics_norm.get('optimal_saturated', False):
+                self.logger.warning(f"  ** SATURATED ({metrics_norm.get('optimal_saturation_frac', 0):.1%}) "
+                                    f"-- signal may be underestimated **")
+                alt = metrics_norm.get('best_non_saturated_angle')
+                if alt is not None:
+                    self.logger.info(f"  Best non-saturated: {alt:.2f} deg "
+                                    f"(signal={metrics_norm.get('best_non_saturated_signal', 0)*100:.2f}%)")
 
             if optimal_raw == optimal_norm:
                 self.logger.info(f"\nBoth methods agree: optimal angle is {optimal_raw:.2f} degrees")
