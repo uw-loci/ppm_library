@@ -207,10 +207,14 @@ See the `examples/` directory for complete examples:
 
 ## License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Authors
 
 - Mike Nelson (msnelson8@wisc.edu)
 - Bin Li (bli346@wisc.edu)
 - Jenu Chacko (jenu.chacko@wisc.edu)
+
+## AI-Assisted Development
+
+This project was developed with assistance from [Claude](https://claude.ai) (Anthropic). Claude was used as a development tool for code generation, architecture design, debugging, and documentation throughout the project.
