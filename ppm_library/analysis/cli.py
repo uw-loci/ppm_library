@@ -402,6 +402,9 @@ def run_perpendicularity(args):
             'n_tacs3_clusters': pstacs['n_tacs3_clusters'],
             'contour_length_px': pstacs['contour_length_px'],
             'tacs_threshold_deg': pstacs['tacs_threshold_deg'],
+            # Per-contour-pixel data for border visualization
+            'contour_points': pstacs['contour_points'].tolist(),
+            'contour_tacs_class': pstacs['contour_tacs_class'].tolist(),
         }
     else:
         output['pstacs'] = None
