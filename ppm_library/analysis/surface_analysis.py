@@ -46,7 +46,9 @@ def rasterize_geojson_to_mask(geojson_path, width, height, fill_holes=True):
     """Rasterize a GeoJSON polygon to a binary mask.
 
     Args:
-        geojson_path: path to GeoJSON file (single Feature or FeatureCollection)
+        geojson_path: path to GeoJSON file, or a dict already parsed from JSON.
+            When called from Appose, a dict is passed directly to avoid
+            writing a temporary file.
         width: output mask width in pixels
         height: output mask height in pixels
         fill_holes: if True, fill holes in polygons before rasterization
@@ -56,8 +58,11 @@ def rasterize_geojson_to_mask(geojson_path, width, height, fill_holes=True):
     """
     from skimage.draw import polygon as draw_polygon
 
-    with open(str(geojson_path)) as f:
-        geojson = json.load(f)
+    if isinstance(geojson_path, dict):
+        geojson = geojson_path
+    else:
+        with open(str(geojson_path)) as f:
+            geojson = json.load(f)
 
     mask = np.zeros((height, width), dtype=bool)
 
