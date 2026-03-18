@@ -128,6 +128,12 @@ def main():
         help="Path to ROI mask image (binary, same dims as sum)"
     )
     parser.add_argument(
+        "--foreground-mask",
+        help="Path to external foreground mask (binary TIFF, same dims as sum). "
+             "When provided, replaces the biref threshold mask for foreground detection. "
+             "Typically generated from a QuPath pixel classifier or thresholder."
+    )
+    parser.add_argument(
         "--mode", choices=["analyze", "filter", "perpendicularity"], default="analyze",
         help="Analysis mode: 'analyze' for full stats, 'filter' for angle range, 'perpendicularity' for surface analysis"
     )
@@ -211,9 +217,10 @@ def run_analysis(args):
     # Load calibration
     calibration = RadialCalibrationResult.load(args.calibration)
 
-    # Load biref image (optional)
+    # Load foreground mask or biref image (optional, mutually exclusive)
+    foreground_mask = _load_foreground_mask(args)
     biref_image = None
-    if args.biref:
+    if foreground_mask is None and args.biref:
         biref_path = Path(args.biref)
         if biref_path.exists():
             biref_image = imread(str(biref_path))
@@ -237,6 +244,7 @@ def run_analysis(args):
         saturation_threshold=args.saturation_threshold,
         value_threshold=args.value_threshold,
         histogram_bins=args.bins,
+        foreground_mask=foreground_mask,
     )
 
     # Apply ROI mask if provided (restrict to annotation shape)
@@ -300,8 +308,12 @@ def run_filter(args):
             if roi_mask.shape == mask.shape:
                 mask = mask & roi_mask
 
-    # Apply biref mask if provided
-    if args.biref:
+    # Apply foreground mask (from pixel classifier) or biref mask
+    foreground_mask = _load_foreground_mask(args)
+    if foreground_mask is not None:
+        if foreground_mask.shape == mask.shape:
+            mask = mask & foreground_mask
+    elif args.biref:
         biref_path = Path(args.biref)
         if biref_path.exists():
             from ppm_library.analysis.region_analysis import compute_ppm_positive_mask
@@ -348,9 +360,10 @@ def run_perpendicularity(args):
         args.boundary, width=w, height=h, fill_holes=args.fill_holes
     )
 
-    # Load biref image (optional)
+    # Load foreground mask or biref image (optional, mutually exclusive)
+    foreground_mask = _load_foreground_mask(args)
     biref_image = None
-    if args.biref:
+    if foreground_mask is None and args.biref:
         biref_path = Path(args.biref)
         if biref_path.exists():
             biref_image = imread(str(biref_path))
@@ -369,6 +382,7 @@ def run_perpendicularity(args):
         biref_threshold=args.biref_threshold,
         saturation_threshold=args.saturation_threshold,
         value_threshold=args.value_threshold,
+        foreground_mask=foreground_mask,
     )
 
     # Save detailed results if output dir provided
@@ -432,6 +446,22 @@ def _save_perpendicularity_details(result, output_dir):
             contour_scores_smoothed=pstacs['contour_scores_smoothed'],
             contour_tacs_class=pstacs['contour_tacs_class'],
         )
+
+
+def _load_foreground_mask(args):
+    """Load external foreground mask if --foreground-mask was provided.
+
+    Returns a boolean numpy array (H, W) or None.
+    """
+    if not getattr(args, 'foreground_mask', None):
+        return None
+    fg_path = Path(args.foreground_mask)
+    if not fg_path.exists():
+        return None
+    fg = imread(str(fg_path))
+    if fg.ndim == 3:
+        fg = fg[:, :, 0]
+    return fg > 0
 
 
 def _load_image(path):

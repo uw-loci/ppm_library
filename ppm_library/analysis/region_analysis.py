@@ -311,6 +311,7 @@ def analyze_region(
     saturation_threshold=0.2,
     value_threshold=0.2,
     histogram_bins=18,
+    foreground_mask=None,
 ):
     """Complete region analysis: angles + optional PPM masking + stats + histogram.
 
@@ -323,11 +324,15 @@ def analyze_region(
         calibration: RadialCalibrationResult or path to .npz
         biref_array: Optional birefringence image region (H, W) or (H, W, 3).
             If provided, analysis is restricted to PPM-positive pixels.
+            Ignored if foreground_mask is provided.
         biref_threshold: Threshold for PPM-positive classification (only used
-            if biref_array is provided)
+            if biref_array is provided and foreground_mask is not)
         saturation_threshold: Minimum HSV saturation for valid hue
         value_threshold: Minimum HSV value for valid hue
         histogram_bins: Number of angle histogram bins
+        foreground_mask: Optional external binary mask (H, W), True for
+            foreground pixels. When provided, replaces biref-based masking.
+            Typically from a QuPath pixel classifier or thresholder.
 
     Returns:
         dict with:
@@ -335,12 +340,26 @@ def analyze_region(
             'mask': bool array (H, W), True where measurements are valid
             'histogram': dict from compute_angle_histogram()
             'stats': dict from compute_circular_statistics()
-            'ppm_positive_mask': bool array or None (if no biref provided)
+            'ppm_positive_mask': bool array or None (if no biref/foreground provided)
             'color_valid_mask': bool array (H, W)
     """
     calibration = load_calibration(calibration)
 
-    if biref_array is not None:
+    if foreground_mask is not None:
+        # External foreground mask replaces biref-based masking
+        result = compute_angles_from_rgb(
+            rgb_array, calibration, saturation_threshold, value_threshold,
+        )
+        angles = result['angles']
+        color_valid_mask = result['valid_mask']
+        fg = foreground_mask.astype(bool)
+        if fg.shape != color_valid_mask.shape:
+            raise ValueError(
+                f"Foreground mask shape {fg.shape} != image shape {color_valid_mask.shape}"
+            )
+        mask = color_valid_mask & fg
+        ppm_positive_mask = fg
+    elif biref_array is not None:
         masked = compute_masked_angles(
             rgb_array, biref_array, calibration,
             biref_threshold, saturation_threshold, value_threshold,

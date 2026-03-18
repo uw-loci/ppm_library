@@ -506,6 +506,7 @@ def analyze_perpendicularity(
     biref_threshold=100,
     saturation_threshold=0.2,
     value_threshold=0.2,
+    foreground_mask=None,
 ):
     """All-in-one entry point for surface perpendicularity analysis.
 
@@ -522,9 +523,13 @@ def analyze_perpendicularity(
         tacs_threshold_deg: angle threshold for PS-TACS (default 30)
         smoothing_window: PS-TACS contour smoothing window
         biref_array: optional birefringence image for PPM+ masking
+            (ignored if foreground_mask is provided)
         biref_threshold: biref intensity threshold
+            (ignored if foreground_mask is provided)
         saturation_threshold: min HSV saturation for valid fiber pixels
         value_threshold: min HSV value for valid fiber pixels
+        foreground_mask: optional external binary mask (H, W), True for
+            foreground pixels. Replaces biref-based masking when provided.
 
     Returns:
         dict with:
@@ -552,8 +557,15 @@ def analyze_perpendicularity(
     fiber_angles = angle_result['angles']
     fiber_mask = angle_result['valid_mask']
 
-    # Apply biref mask if provided
-    if biref_array is not None:
+    # Apply foreground mask (from pixel classifier) or biref mask
+    if foreground_mask is not None:
+        fg = foreground_mask.astype(bool)
+        if fg.shape != fiber_mask.shape:
+            raise ValueError(
+                f"Foreground mask shape {fg.shape} != image shape {fiber_mask.shape}"
+            )
+        fiber_mask = fiber_mask & fg
+    elif biref_array is not None:
         biref_mask = compute_ppm_positive_mask(biref_array, biref_threshold)
         fiber_mask = fiber_mask & biref_mask
 
