@@ -507,6 +507,7 @@ def analyze_perpendicularity(
     fill_holes=True,
     tacs_threshold_deg=30.0,
     smoothing_window=10,
+    boundary_smoothing_sigma=5.0,
     biref_array=None,
     biref_threshold=100,
     saturation_threshold=0.2,
@@ -527,6 +528,11 @@ def analyze_perpendicularity(
         fill_holes: fill holes in boundary mask
         tacs_threshold_deg: angle threshold for PS-TACS (default 30)
         smoothing_window: PS-TACS contour smoothing window
+        boundary_smoothing_sigma: Gaussian sigma for smoothing the boundary
+            mask before contour extraction and normal computation. Removes
+            pixel-level staircase artifacts from segmentation boundaries so
+            that normals reflect the general tumor surface direction. Set to
+            0 to disable smoothing. Default 5.0 pixels.
         biref_array: optional birefringence image for PPM+ masking
             (ignored if foreground_mask is provided)
         biref_threshold: biref intensity threshold
@@ -579,21 +585,35 @@ def analyze_perpendicularity(
     if fill_holes:
         mask_for_analysis = ndimage.binary_fill_holes(mask_for_analysis)
 
-    # Border zone
+    # Smooth boundary for contour/normal computation to remove pixel-level
+    # staircase artifacts. Zone computation uses the original mask so the
+    # analysis region stays true to the annotation.
+    if boundary_smoothing_sigma and boundary_smoothing_sigma > 0:
+        smoothed_float = ndimage.gaussian_filter(
+            mask_for_analysis.astype(np.float64), sigma=boundary_smoothing_sigma
+        )
+        mask_for_contours = smoothed_float > 0.5
+        # Preserve the overall shape -- re-fill holes after smoothing
+        if fill_holes:
+            mask_for_contours = ndimage.binary_fill_holes(mask_for_contours)
+    else:
+        mask_for_contours = mask_for_analysis
+
+    # Border zone (uses original annotation, not smoothed)
     zone_result = compute_border_zone_mask(
         mask_for_analysis, dilation_px_int, mode=mode, fill_holes=False
     )
     zone_mask = zone_result['zone_mask']
     dist_from_boundary = zone_result['dist_from_boundary']
 
-    # Simple approach
+    # Simple approach (uses smoothed mask for distance-transform normals)
     simple_result = compute_simple_perpendicularity(
-        fiber_angles, fiber_mask, mask_for_analysis, zone_mask,
+        fiber_angles, fiber_mask, mask_for_contours, zone_mask,
         fill_holes=False,
     )
 
-    # PS-TACS approach
-    contours = compute_boundary_contour(mask_for_analysis, fill_holes=False)
+    # PS-TACS approach (uses smoothed mask for contour extraction)
+    contours = compute_boundary_contour(mask_for_contours, fill_holes=False)
 
     pstacs_result = None
     contour_length_um = 0.0
@@ -601,7 +621,7 @@ def analyze_perpendicularity(
         # Use the longest contour (main boundary)
         main_contour = max(contours, key=len)
         normals = compute_contour_normals(
-            main_contour, outward=True, boundary_mask=mask_for_analysis
+            main_contour, outward=True, boundary_mask=mask_for_contours
         )
         pstacs_result = compute_tacs_scores(
             fiber_angles, fiber_mask, mask_for_analysis,
