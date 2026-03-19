@@ -55,6 +55,7 @@ def compute_angles_from_rgb(
     calibration,
     saturation_threshold=0.2,
     value_threshold=0.2,
+    exclude_clipped=True,
 ):
     """Compute fiber orientation angles from an RGB image region.
 
@@ -66,6 +67,8 @@ def compute_angles_from_rgb(
         calibration: RadialCalibrationResult or path to .npz file
         saturation_threshold: minimum HSV saturation for valid pixels (0-1)
         value_threshold: minimum HSV value/brightness for valid pixels (0-1)
+        exclude_clipped: if True, exclude pixels where any RGB channel is 255
+            (camera saturation). These pixels have unreliable hue values.
 
     Returns:
         dict with:
@@ -75,6 +78,7 @@ def compute_angles_from_rgb(
             'saturation': float64 array (H, W), saturation 0-1
             'value': float64 array (H, W), value/brightness 0-1
             'n_valid': int, number of valid pixels
+            'n_clipped': int, number of pixels excluded for RGB clipping
     """
     calibration = load_calibration(calibration)
 
@@ -97,6 +101,14 @@ def compute_angles_from_rgb(
     # Valid mask: sufficient color information for measurement
     valid_mask = (saturation >= saturation_threshold) & (value >= value_threshold)
 
+    # Exclude pixels where any RGB channel is clipped at 255 (camera saturation).
+    # These pixels have unreliable hue because the true color is lost.
+    n_clipped = 0
+    if exclude_clipped:
+        clipped_mask = np.any(rgb_array == 255, axis=2)
+        n_clipped = int(np.sum(clipped_mask & valid_mask))
+        valid_mask = valid_mask & ~clipped_mask
+
     # Apply calibration: hue -> angle
     angles = np.full(hue.shape, np.nan, dtype=np.float64)
     if np.any(valid_mask):
@@ -109,6 +121,7 @@ def compute_angles_from_rgb(
         'saturation': saturation,
         'value': value,
         'n_valid': int(np.sum(valid_mask)),
+        'n_clipped': n_clipped,
     }
 
 

@@ -89,7 +89,7 @@ class TestComputeAnglesFromRgb:
     def test_returns_expected_keys(self, mock_calibration):
         rgb = _make_saturated_rgb(0.5, 0.8, 0.8)
         result = compute_angles_from_rgb(rgb, mock_calibration)
-        expected_keys = {"angles", "valid_mask", "hue", "saturation", "value", "n_valid"}
+        expected_keys = {"angles", "valid_mask", "hue", "saturation", "value", "n_valid", "n_clipped"}
         assert set(result.keys()) == expected_keys
 
     @pytest.mark.usefixtures("_patch_load_calibration")

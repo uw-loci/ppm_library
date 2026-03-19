@@ -305,7 +305,9 @@ def compute_simple_perpendicularity(fiber_angles, fiber_mask, boundary_mask,
     grad_y, grad_x = np.gradient(dist)
 
     # Normal angle at each pixel (0-180, axial)
-    normal_angle_rad = np.arctan2(grad_y, grad_x)
+    # Negate grad_y to convert from image coordinates (y-down) to math
+    # convention (y-up), matching the fiber angle convention from calibration.
+    normal_angle_rad = np.arctan2(-grad_y, grad_x)
     normal_angle_deg = np.degrees(normal_angle_rad) % 180
 
     # Analysis mask: in zone AND valid fiber
@@ -404,8 +406,11 @@ def compute_tacs_scores(fiber_angles, fiber_mask, boundary_mask,
     fiber_angle_values = fiber_angles[fiber_ys, fiber_xs]
 
     # Fiber direction vectors (unit vectors from angle)
+    # Fiber angles are in math convention (CCW from horizontal, y-up) but
+    # contour normals are in image coordinates (y-down). Negate the
+    # y-component so the dot product uses a consistent coordinate system.
     fiber_rad = np.radians(fiber_angle_values)
-    fiber_vecs = np.column_stack([np.cos(fiber_rad), np.sin(fiber_rad)])
+    fiber_vecs = np.column_stack([np.cos(fiber_rad), -np.sin(fiber_rad)])
 
     # Auto-compute falloff sigma if not provided
     if falloff_sigma_px is None:
@@ -564,9 +569,11 @@ def analyze_perpendicularity(
         rgb_array, calibration,
         saturation_threshold=saturation_threshold,
         value_threshold=value_threshold,
+        exclude_clipped=True,
     )
     fiber_angles = angle_result['angles']
     fiber_mask = angle_result['valid_mask']
+    n_clipped = angle_result.get('n_clipped', 0)
 
     # Apply foreground mask (from pixel classifier) or biref mask
     if foreground_mask is not None:
@@ -643,6 +650,7 @@ def analyze_perpendicularity(
         'pixel_size_um': pixel_size_um,
         'contour_length_um': contour_length_um,
         'n_contours': len(contours),
+        'n_clipped_pixels': n_clipped,
     }
 
 
