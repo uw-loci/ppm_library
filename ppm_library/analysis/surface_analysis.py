@@ -518,6 +518,7 @@ def analyze_perpendicularity(
     saturation_threshold=0.2,
     value_threshold=0.2,
     foreground_mask=None,
+    min_rgb_intensity=100,
 ):
     """All-in-one entry point for surface perpendicularity analysis.
 
@@ -546,6 +547,8 @@ def analyze_perpendicularity(
         value_threshold: min HSV value for valid fiber pixels
         foreground_mask: optional external binary mask (H, W), True for
             foreground pixels. Replaces biref-based masking when provided.
+        min_rgb_intensity: minimum max(R,G,B) to include a pixel. Excludes
+            dark absorbing tissue (e.g. hematoxylin nuclei). Default 100.
 
     Returns:
         dict with:
@@ -570,6 +573,7 @@ def analyze_perpendicularity(
         saturation_threshold=saturation_threshold,
         value_threshold=value_threshold,
         exclude_clipped=True,
+        min_rgb_intensity=min_rgb_intensity,
     )
     fiber_angles = angle_result['angles']
     fiber_mask = angle_result['valid_mask']

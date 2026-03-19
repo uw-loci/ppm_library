@@ -56,6 +56,7 @@ def compute_angles_from_rgb(
     saturation_threshold=0.2,
     value_threshold=0.2,
     exclude_clipped=True,
+    min_rgb_intensity=100,
 ):
     """Compute fiber orientation angles from an RGB image region.
 
@@ -69,6 +70,10 @@ def compute_angles_from_rgb(
         value_threshold: minimum HSV value/brightness for valid pixels (0-1)
         exclude_clipped: if True, exclude pixels where any RGB channel is 255
             (camera saturation). These pixels have unreliable hue values.
+        min_rgb_intensity: minimum value of max(R,G,B) for a pixel to be
+            included. Excludes dark absorbing tissue (e.g. hematoxylin nuclei)
+            whose spurious color comes from dye absorption, not birefringence.
+            Set to 0 to disable. Default 100.
 
     Returns:
         dict with:
@@ -101,6 +106,16 @@ def compute_angles_from_rgb(
     # Valid mask: sufficient color information for measurement
     valid_mask = (saturation >= saturation_threshold) & (value >= value_threshold)
 
+    # Exclude dark absorbing tissue (e.g. hematoxylin-stained nuclei).
+    # These pixels have spurious hue from dye absorption, not birefringence.
+    # Birefringent collagen transmits polarized light and appears bright.
+    n_dark = 0
+    if min_rgb_intensity > 0:
+        max_rgb = np.max(rgb_array, axis=2)
+        dark_mask = max_rgb < min_rgb_intensity
+        n_dark = int(np.sum(dark_mask & valid_mask))
+        valid_mask = valid_mask & ~dark_mask
+
     # Exclude pixels where any RGB channel is clipped at 255 (camera saturation).
     # These pixels have unreliable hue because the true color is lost.
     n_clipped = 0
@@ -122,6 +137,7 @@ def compute_angles_from_rgb(
         'value': value,
         'n_valid': int(np.sum(valid_mask)),
         'n_clipped': n_clipped,
+        'n_dark_excluded': n_dark,
     }
 
 
@@ -161,6 +177,7 @@ def compute_masked_angles(
     biref_threshold,
     saturation_threshold=0.2,
     value_threshold=0.2,
+    min_rgb_intensity=100,
 ):
     """Compute fiber angles masked to PPM-positive regions only.
 
@@ -187,7 +204,8 @@ def compute_masked_angles(
     """
     # Compute angles
     angle_result = compute_angles_from_rgb(
-        rgb_array, calibration, saturation_threshold, value_threshold
+        rgb_array, calibration, saturation_threshold, value_threshold,
+        min_rgb_intensity=min_rgb_intensity,
     )
 
     # Compute PPM+ mask
@@ -325,6 +343,7 @@ def analyze_region(
     value_threshold=0.2,
     histogram_bins=18,
     foreground_mask=None,
+    min_rgb_intensity=100,
 ):
     """Complete region analysis: angles + optional PPM masking + stats + histogram.
 
@@ -362,6 +381,7 @@ def analyze_region(
         # External foreground mask replaces biref-based masking
         result = compute_angles_from_rgb(
             rgb_array, calibration, saturation_threshold, value_threshold,
+            min_rgb_intensity=min_rgb_intensity,
         )
         angles = result['angles']
         color_valid_mask = result['valid_mask']
@@ -376,6 +396,7 @@ def analyze_region(
         masked = compute_masked_angles(
             rgb_array, biref_array, calibration,
             biref_threshold, saturation_threshold, value_threshold,
+            min_rgb_intensity=min_rgb_intensity,
         )
         angles = masked['angles']
         mask = masked['combined_mask']
@@ -384,6 +405,7 @@ def analyze_region(
     else:
         result = compute_angles_from_rgb(
             rgb_array, calibration, saturation_threshold, value_threshold,
+            min_rgb_intensity=min_rgb_intensity,
         )
         angles = result['angles']
         mask = result['valid_mask']
