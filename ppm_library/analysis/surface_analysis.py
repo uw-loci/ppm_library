@@ -578,8 +578,12 @@ def analyze_perpendicularity(
     fiber_angles = angle_result['angles']
     fiber_mask = angle_result['valid_mask']
     n_clipped = angle_result.get('n_clipped', 0)
+    n_dark = angle_result.get('n_dark_excluded', 0)
+    total_pixels = rgb_array.shape[0] * rgb_array.shape[1]
+    hsv_valid_count = int(np.sum(fiber_mask))
 
     # Apply foreground mask (from pixel classifier) or biref mask
+    biref_valid_count = -1
     if foreground_mask is not None:
         fg = foreground_mask.astype(bool)
         if fg.shape != fiber_mask.shape:
@@ -589,7 +593,9 @@ def analyze_perpendicularity(
         fiber_mask = fiber_mask & fg
     elif biref_array is not None:
         biref_mask = compute_ppm_positive_mask(biref_array, biref_threshold)
+        biref_valid_count = int(np.sum(biref_mask))
         fiber_mask = fiber_mask & biref_mask
+    combined_valid_count = int(np.sum(fiber_mask))
 
     # Fill holes if requested
     mask_for_analysis = boundary_mask.copy()
@@ -655,6 +661,19 @@ def analyze_perpendicularity(
         'contour_length_um': contour_length_um,
         'n_contours': len(contours),
         'n_clipped_pixels': n_clipped,
+        # Intermediate masks for visualization (avoids recomputation)
+        'fiber_mask': fiber_mask,
+        'zone_mask': zone_mask,
+        # Diagnostic counts (avoids recomputation of masks for stats)
+        'mask_diagnostics': {
+            'total_pixels': total_pixels,
+            'hsv_valid_pixels': hsv_valid_count,
+            'clipped_pixels': n_clipped,
+            'dark_excluded_pixels': n_dark,
+            'biref_valid_pixels': biref_valid_count,
+            'combined_valid_pixels': combined_valid_count,
+            'zone_pixels': int(np.sum(zone_mask)),
+        },
     }
 
 
