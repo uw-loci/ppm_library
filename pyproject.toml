@@ -1,6 +1,6 @@
 [project]
 name = "ppm-library"
-version = "1.3.1"
+version = "1.3.2"
 description = "Unified library for polarized light microscopy - acquisition support and image analysis"
 readme = "README.md"
 requires-python = ">=3.10"
