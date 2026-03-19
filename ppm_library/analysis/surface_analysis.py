@@ -559,10 +559,21 @@ def analyze_perpendicularity(
             'contour_length_um': float
             'n_contours': int
     """
+    import time as _time
+    import logging as _logging
+    _perf_log = _logging.getLogger("ppm.perf")
+    _t0 = _time.perf_counter()
+    def _lap(label):
+        nonlocal _t0
+        now = _time.perf_counter()
+        _perf_log.info("PERF %s: %.3fs", label, now - _t0)
+        _t0 = now
+
     from ppm_library.analysis.region_analysis import (
         compute_angles_from_rgb,
         compute_ppm_positive_mask,
     )
+    _lap("imports")
 
     dilation_px = dilation_um / pixel_size_um
     dilation_px_int = max(1, int(round(dilation_px)))
@@ -575,6 +586,7 @@ def analyze_perpendicularity(
         exclude_clipped=True,
         min_rgb_intensity=min_rgb_intensity,
     )
+    _lap("compute_angles_from_rgb")
     fiber_angles = angle_result['angles']
     fiber_mask = angle_result['valid_mask']
     n_clipped = angle_result.get('n_clipped', 0)
@@ -596,6 +608,7 @@ def analyze_perpendicularity(
         biref_valid_count = int(np.sum(biref_mask))
         fiber_mask = fiber_mask & biref_mask
     combined_valid_count = int(np.sum(fiber_mask))
+    _lap("biref_masking")
 
     # Fill holes if requested
     mask_for_analysis = boundary_mask.copy()
@@ -616,18 +629,23 @@ def analyze_perpendicularity(
     else:
         mask_for_contours = mask_for_analysis
 
+    _lap("boundary_smoothing")
+
     # Border zone (uses original annotation, not smoothed)
     zone_result = compute_border_zone_mask(
         mask_for_analysis, dilation_px_int, mode=mode, fill_holes=False
     )
     zone_mask = zone_result['zone_mask']
     dist_from_boundary = zone_result['dist_from_boundary']
+    _lap("compute_border_zone_mask")
 
     # Simple approach (uses smoothed mask for distance-transform normals)
     simple_result = compute_simple_perpendicularity(
         fiber_angles, fiber_mask, mask_for_contours, zone_mask,
         fill_holes=False,
     )
+
+    _lap("compute_simple_perpendicularity")
 
     # PS-TACS approach (uses smoothed mask for contour extraction)
     contours = compute_boundary_contour(mask_for_contours, fill_holes=False)
@@ -647,6 +665,8 @@ def analyze_perpendicularity(
             tacs_threshold_deg=tacs_threshold_deg,
             smoothing_window=smoothing_window,
         )
+
+        _lap("compute_tacs_scores")
 
         # Contour length in microns
         diffs = np.diff(main_contour, axis=0)
