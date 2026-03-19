@@ -230,6 +230,7 @@ def compute_masked_angles(
         'combined_mask': combined,
         'ppm_positive_mask': ppm_mask,
         'color_valid_mask': angle_result['valid_mask'],
+        'hue': angle_result.get('hue'),
         'n_combined': int(np.sum(combined)),
         'n_ppm_positive': int(np.sum(ppm_mask)),
         'n_color_valid': angle_result['n_valid'],
@@ -377,14 +378,17 @@ def analyze_region(
     """
     calibration = load_calibration(calibration)
 
+    hue_array = None
+
     if foreground_mask is not None:
         # External foreground mask replaces biref-based masking
-        result = compute_angles_from_rgb(
+        angle_result = compute_angles_from_rgb(
             rgb_array, calibration, saturation_threshold, value_threshold,
             min_rgb_intensity=min_rgb_intensity,
         )
-        angles = result['angles']
-        color_valid_mask = result['valid_mask']
+        angles = angle_result['angles']
+        hue_array = angle_result.get('hue')
+        color_valid_mask = angle_result['valid_mask']
         fg = foreground_mask.astype(bool)
         if fg.shape != color_valid_mask.shape:
             raise ValueError(
@@ -402,15 +406,17 @@ def analyze_region(
         mask = masked['combined_mask']
         ppm_positive_mask = masked['ppm_positive_mask']
         color_valid_mask = masked['color_valid_mask']
+        hue_array = masked.get('hue')
     else:
-        result = compute_angles_from_rgb(
+        angle_result = compute_angles_from_rgb(
             rgb_array, calibration, saturation_threshold, value_threshold,
             min_rgb_intensity=min_rgb_intensity,
         )
-        angles = result['angles']
-        mask = result['valid_mask']
+        angles = angle_result['angles']
+        hue_array = angle_result.get('hue')
+        mask = angle_result['valid_mask']
         ppm_positive_mask = None
-        color_valid_mask = result['valid_mask']
+        color_valid_mask = angle_result['valid_mask']
 
     histogram = compute_angle_histogram(angles, mask, bins=histogram_bins)
     stats = compute_circular_statistics(angles, mask)
@@ -422,6 +428,7 @@ def analyze_region(
         'stats': stats,
         'ppm_positive_mask': ppm_positive_mask,
         'color_valid_mask': color_valid_mask,
+        'hue': hue_array,
     }
 
 
