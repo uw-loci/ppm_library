@@ -421,6 +421,7 @@ def compute_tacs_scores(fiber_angles, fiber_mask, boundary_mask,
 
     # Per-contour-pixel scoring
     scores_raw = np.zeros(N)
+    density_raw = np.zeros(N)  # Gaussian-weighted fiber count per contour pixel
     threshold_rad = np.radians(tacs_threshold_deg)
 
     for i in range(N):
@@ -442,6 +443,7 @@ def compute_tacs_scores(fiber_angles, fiber_mask, boundary_mask,
             continue
 
         w = weights[in_range]
+        density_raw[i] = np.sum(w)
         fv = fiber_vecs[in_range]
 
         # Dot product: angle between fiber and normal
@@ -495,6 +497,66 @@ def compute_tacs_scores(fiber_angles, fiber_mask, boundary_mask,
         'n_tacs3_clusters': n_tacs3_clusters,
         'contour_length_px': N,
         'tacs_threshold_deg': tacs_threshold_deg,
+        'contour_density_raw': density_raw,
+    }
+
+
+def compute_extended_tacs(pstacs_result, min_collagen_density=0.1):
+    """Reclassify contour segments using TACS-1/2/3 extended scheme.
+
+    Takes the output of compute_tacs_scores() and reclassifies contour
+    pixels where collagen density is below a threshold as TACS-1
+    (sparse/disorganized collagen). Contour pixels with sufficient
+    collagen retain their PS-TACS classification (TACS-2 or TACS-3).
+
+    This is NOT part of the PS-TACS method (Qian et al.). It extends
+    the classification with TACS-1 as defined in Provenzano et al.
+    (2006, BMC Medicine) -- regions near the tumor boundary where
+    collagen is sparse or absent.
+
+    Args:
+        pstacs_result: dict from compute_tacs_scores(), must contain
+            'contour_tacs_class', 'contour_density_raw', 'contour_points'
+        min_collagen_density: float in [0, 1], threshold on normalized
+            density below which a contour pixel is classified as TACS-1.
+            Default 0.1 (10% of the densest region).
+
+    Returns:
+        dict with:
+            'extended_tacs_class': (N,) int, 1/2/3 per contour pixel
+            'contour_points': (N, 2) the contour coordinates
+            'density_normalized': (N,) float [0, 1], collagen density
+            'pct_tacs1': float
+            'pct_tacs2': float
+            'pct_tacs3': float
+            'n_tacs1_clusters': int
+            'n_tacs3_clusters': int
+            'min_collagen_density': float (echo back)
+    """
+    density_raw = pstacs_result['contour_density_raw']
+    max_density = float(np.max(density_raw)) if len(density_raw) > 0 and np.max(density_raw) > 0 else 1.0
+    density_norm = density_raw / max_density
+
+    # Start from PS-TACS classes (2 or 3), reclassify sparse regions as 1
+    ext_class = pstacs_result['contour_tacs_class'].copy()
+    ext_class[density_norm < min_collagen_density] = 1
+
+    N = len(ext_class)
+    n1 = int(np.sum(ext_class == 1))
+    n2 = int(np.sum(ext_class == 2))
+    n3 = int(np.sum(ext_class == 3))
+    total = n1 + n2 + n3
+
+    return {
+        'extended_tacs_class': ext_class,
+        'contour_points': pstacs_result['contour_points'],
+        'density_normalized': density_norm,
+        'pct_tacs1': 100.0 * n1 / total if total > 0 else 0.0,
+        'pct_tacs2': 100.0 * n2 / total if total > 0 else 0.0,
+        'pct_tacs3': 100.0 * n3 / total if total > 0 else 0.0,
+        'n_tacs1_clusters': _count_clusters(ext_class, target=1),
+        'n_tacs3_clusters': _count_clusters(ext_class, target=3),
+        'min_collagen_density': min_collagen_density,
     }
 
 
@@ -519,6 +581,8 @@ def analyze_perpendicularity(
     value_threshold=0.2,
     foreground_mask=None,
     min_rgb_intensity=100,
+    extended_tacs=False,
+    min_collagen_density=0.1,
 ):
     """All-in-one entry point for surface perpendicularity analysis.
 
@@ -673,9 +737,17 @@ def analyze_perpendicularity(
         segment_lengths = np.sqrt(np.sum(diffs ** 2, axis=1))
         contour_length_um = float(np.sum(segment_lengths) * pixel_size_um)
 
+    # Extended TACS: reclassify sparse-collagen regions as TACS-1
+    extended_tacs_result = None
+    if extended_tacs and pstacs_result is not None:
+        extended_tacs_result = compute_extended_tacs(
+            pstacs_result, min_collagen_density=min_collagen_density
+        )
+
     return {
         'simple': simple_result,
         'pstacs': pstacs_result,
+        'extended_tacs': extended_tacs_result,
         'dilation_px': dilation_px_int,
         'pixel_size_um': pixel_size_um,
         'contour_length_um': contour_length_um,
@@ -792,4 +864,5 @@ def _empty_tacs_result(N, contour_points, tacs_threshold_deg):
         'n_tacs3_clusters': 0,
         'contour_length_px': N,
         'tacs_threshold_deg': tacs_threshold_deg,
+        'contour_density_raw': np.zeros(N),
     }
