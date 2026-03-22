@@ -2,8 +2,8 @@
 
 Unified library for polarized light microscopy (PPM) - acquisition support and image analysis.
 
-> **Part of the QPSC (QuPath Scope Control) system**
-> For complete installation instructions, see: https://github.com/uw-loci/QPSC
+> **Part of the [QPSC (QuPath Scope Control)](https://github.com/uw-loci/qupath-extension-qpsc) system.**
+> For complete installation and setup instructions, see the [QPSC Installation Guide](https://github.com/uw-loci/qupath-extension-qpsc/blob/main/documentation/INSTALLATION.md).
 >
 > **Note:** This library can also be used standalone for general microscopy image processing and PPM analysis.
 
