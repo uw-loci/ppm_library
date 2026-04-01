@@ -376,7 +376,7 @@ class TifWriterUtils:
         )
 
         if logger:
-            logger.info(f"  Created normalized birefringence: {filename} (16-bit, range: {norm_biref_img.min()}-{norm_biref_img.max()})")
+            logger.debug(f"  Created normalized birefringence: {filename} (16-bit, range: {norm_biref_img.min()}-{norm_biref_img.max()})")
 
         return norm_biref_img
 
