@@ -234,7 +234,7 @@ class PolarizerCalibrationUtils:
 
         Returns:
             Dictionary containing:
-                - 'rotation_device': Name of rotation device (PIZStage or Thor)
+                - 'rotation_device': Name of rotation stage device
                 - 'coarse_hardware_positions': Hardware positions tested in coarse sweep
                 - 'coarse_intensities': Intensities from coarse sweep
                 - 'approximate_minima': Approximate hardware positions of minima
@@ -244,7 +244,7 @@ class PolarizerCalibrationUtils:
                 - 'optical_angles': Optical angles corresponding to exact minima
 
         Raises:
-            AttributeError: If hardware lacks PPM methods or rotation device.
+            AttributeError: If hardware lacks a configured rotation stage.
             RuntimeError: If image acquisition fails.
             ValueError: If fewer than 2 minima detected (expected for 360 deg sweep).
         """
@@ -254,33 +254,25 @@ class PolarizerCalibrationUtils:
         if logger_instance is None:
             logger_instance = logger
 
-        # Verify hardware has PPM methods
-        if not hasattr(hardware, 'rotation_device'):
+        # Verify hardware has a rotation stage configured
+        rotation_stage = hardware.rotation_stage
+        if rotation_stage is None:
             raise AttributeError(
-                "Hardware does not have rotation_device attribute. "
+                "Hardware does not have a rotation stage configured. "
                 "Check that PPM is properly initialized."
             )
 
-        rotation_device = hardware.rotation_device
+        rotation_device = rotation_stage.device_name
+        hw_per_deg = rotation_stage.hw_per_deg
         logger_instance.info(f"=== TWO-STAGE HARDWARE OFFSET CALIBRATION ===")
         logger_instance.info(f"Rotation device: {rotation_device}")
 
         # Get current hardware position as reference
-        current_hw_pos = hardware.core.get_position(rotation_device)
+        current_hw_pos = rotation_stage.get_raw_position()
         logger_instance.info(f"Current hardware position: {current_hw_pos:.1f}")
-
-        # Determine conversion factor based on device type
-        if rotation_device == "PIZStage":
-            # For PI: 1 deg optical = 1000 encoder counts
-            hw_per_deg = 1000.0
-            logger_instance.info("PI Stage detected: 1 deg = 1000 encoder counts")
-        elif rotation_device == "KBD101_Thor_Rotation":
-            # For Thor: Uses ppm_psgticks_to_thor conversion (-2x + 276)
-            # For sweep purposes, we treat it as 2 counts per degree
-            hw_per_deg = 2.0
-            logger_instance.info("Thor Stage detected: 1 deg = 2 encoder counts (approx)")
-        else:
-            raise ValueError(f"Unknown rotation device: {rotation_device}")
+        logger_instance.info(
+            f"Stage type: 1 deg = {hw_per_deg:.0f} encoder counts"
+        )
 
         # ===== STAGE 1: COARSE SWEEP =====
         logger_instance.info("\n--- STAGE 1: COARSE SWEEP ---")
@@ -313,9 +305,8 @@ class PolarizerCalibrationUtils:
                 except Exception:
                     pass  # Don't fail calibration if progress reporting fails
 
-            # Set hardware position directly
-            hardware.core.set_position(rotation_device, hw_pos)
-            hardware.core.wait_for_device(rotation_device)
+            # Set hardware position directly (raw encoder counts)
+            rotation_stage.set_raw_position(hw_pos)
 
             # Capture image
             try:
@@ -436,8 +427,7 @@ class PolarizerCalibrationUtils:
                     except Exception:
                         pass
 
-                hardware.core.set_position(rotation_device, hw_pos)
-                hardware.core.wait_for_device(rotation_device)
+                rotation_stage.set_raw_position(hw_pos)
 
                 try:
                     img, tags = hardware.snap_image()
@@ -485,14 +475,7 @@ class PolarizerCalibrationUtils:
         # Calculate optical angles for all minima relative to recommended offset
         optical_angles = []
         for hw_pos in exact_minima_sorted:
-            if rotation_device == "PIZStage":
-                optical_angle = (hw_pos - recommended_offset) / hw_per_deg
-            elif rotation_device == "KBD101_Thor_Rotation":
-                # Thor uses: hw_pos = -2 * angle + 276
-                # Need to account for this in angle calculation
-                optical_angle = (hw_pos - recommended_offset) / hw_per_deg
-            else:
-                optical_angle = 0.0
+            optical_angle = (hw_pos - recommended_offset) / hw_per_deg
             optical_angles.append(optical_angle)
 
         logger_instance.info(f"Recommended ppm_pizstage_offset: {recommended_offset:.1f}")
