@@ -6,14 +6,13 @@ image processing operations such as birefringence calculations for PPM imaging.
 """
 
 import pathlib
-import platform
 import shutil
 from typing import Optional, Dict
 import numpy as np
 import tifffile as tf
 import logging
 
-import ppm_library
+from microscope_imaging.io.writer import ome_tiff_writer as _mi_ome_writer
 
 logger = logging.getLogger(__name__)
 
@@ -43,31 +42,7 @@ class TifWriterUtils:
                         "lzw" requires the 'imagecodecs' package
                         "zlib"/"deflate" work without additional dependencies
         """
-        with tf.TiffWriter(filename) as tif:
-            # Build options dict
-            options = {
-                "photometric": "rgb" if len(data.shape) == 3 else "minisblack",
-                "resolutionunit": "CENTIMETER",
-                "maxworkers": 2,
-            }
-
-            # Only add compression if specified (None = uncompressed)
-            # NEVER use JPEG for scientific data (lossy compression)
-            if compression is not None:
-                options["compression"] = compression.lower()
-
-            # Embed provenance in ImageDescription tag
-            description = (
-                f"ppm_library={ppm_library.__version__}"
-                f" python={platform.python_version()}"
-            )
-
-            tif.write(
-                data,
-                resolution=(1e4 / pixel_size_um, 1e4 / pixel_size_um),
-                description=description,
-                **options,
-            )
+        _mi_ome_writer(filename, pixel_size_um, data, compression)
 
     @staticmethod
     def format_imagetags(tags: dict) -> Dict[str, dict]:
