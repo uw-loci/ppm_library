@@ -61,6 +61,7 @@ class TifWriterUtils:
         pixel_size_um: float,
         tile_config_source: Optional[pathlib.Path] = None,
         logger=None,
+        min_intensity: int = 0,
     ) -> np.ndarray:
         """
         Create a single birefringence image from positive and negative angle images.
@@ -90,7 +91,7 @@ class TifWriterUtils:
         # Calculate birefringence (sum of absolute differences)
         output_path = output_dir / filename
 
-        biref_img = TifWriterUtils.ppm_angle_difference(pos_image, neg_image)
+        biref_img = TifWriterUtils.ppm_angle_difference(pos_image, neg_image, min_intensity=min_intensity)
 
         # Save as 16-bit single-channel image (no normalization)
         # Range: 0-765 (sum of absolute RGB differences)
@@ -111,7 +112,7 @@ class TifWriterUtils:
         return pos_image.astype(np.float32) - neg_image.astype(np.float32)
 
     @staticmethod
-    def ppm_angle_difference(img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
+    def ppm_angle_difference(img1: np.ndarray, img2: np.ndarray, min_intensity: int = 0) -> np.ndarray:
         """
         Calculate angle difference for polarized microscopy images.
         Sum of absolute differences across RGB channels.
@@ -133,6 +134,20 @@ class TifWriterUtils:
         # ensuring minimal birefringence signal in blank regions.
         abs_diff = np.abs(img1_i16 - img2_i16)
         sum_abs_diff = np.sum(abs_diff, axis=2)
+
+        # Mask dark regions where combined intensity is below threshold.
+        # Camera read noise in dark pixels creates false birefringence signal
+        # because small random differences get amplified by division.
+        if min_intensity > 0:
+            # Use sum of grayscale intensities across both images
+            if img1.ndim == 3:
+                gray1 = np.mean(img1.astype(np.float32), axis=2)
+                gray2 = np.mean(img2.astype(np.float32), axis=2)
+            else:
+                gray1 = img1.astype(np.float32)
+                gray2 = img2.astype(np.float32)
+            total_intensity = gray1 + gray2
+            sum_abs_diff = np.where(total_intensity >= min_intensity, sum_abs_diff, 0)
 
         # Convert to uint16 (range is 0 to 765, well within uint16)
         return sum_abs_diff.astype(np.uint16)
@@ -180,7 +195,7 @@ class TifWriterUtils:
         return np.clip(scaled, 0, 65535).astype(np.uint16)
 
     @staticmethod
-    def ppm_normalized_difference_abs(img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
+    def ppm_normalized_difference_abs(img1: np.ndarray, img2: np.ndarray, min_intensity: int = 0) -> np.ndarray:
         """
         Calculate absolute normalized birefringence for polarized microscopy images.
         Formula: |[I(+) - I(-)]/[I(+) + I(-)]|, converted to grayscale first.
@@ -217,6 +232,12 @@ class TifWriterUtils:
         # normalized is in range [0, 1]
         # Scale to uint16: 0 -> 0, 1 -> 65535
         scaled = normalized * 65535.0
+
+        # Mask dark regions where combined intensity is below threshold.
+        # Camera read noise in dark pixels creates false birefringence signal
+        # because small random differences get amplified by division.
+        if min_intensity > 0:
+            scaled = np.where(total >= min_intensity, scaled, 0)
 
         return np.clip(scaled, 0, 65535).astype(np.uint16)
 
@@ -310,6 +331,7 @@ class TifWriterUtils:
         pixel_size_um: float,
         tile_config_source: Optional[pathlib.Path] = None,
         logger=None,
+        min_intensity: int = 0,
     ) -> np.ndarray:
         """
         Create a normalized birefringence image from positive and negative angle images.
@@ -340,7 +362,7 @@ class TifWriterUtils:
         # Calculate normalized birefringence (absolute value for visualization)
         output_path = output_dir / filename
 
-        norm_biref_img = TifWriterUtils.ppm_normalized_difference_abs(pos_image, neg_image)
+        norm_biref_img = TifWriterUtils.ppm_normalized_difference_abs(pos_image, neg_image, min_intensity=min_intensity)
 
         # Save as 16-bit single-channel image
         # Range: 0-65535 where 0 = no birefringence, 65535 = maximum
