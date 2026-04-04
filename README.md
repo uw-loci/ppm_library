@@ -1,11 +1,13 @@
 # PPM Library
 
-Unified library for polarized light microscopy (PPM) - acquisition support and image analysis.
+PPM-specific analysis and acquisition support for polarized light microscopy.
 
 > **Part of the [QPSC (QuPath Scope Control)](https://github.com/uw-loci/qupath-extension-qpsc) system.**
 > For complete installation and setup instructions, see the [QPSC Installation Guide](https://github.com/uw-loci/qupath-extension-qpsc/blob/main/documentation/INSTALLATION.md).
 >
-> **Note:** This library can also be used standalone for general microscopy image processing and PPM analysis.
+> **Note:** General microscopy utilities (debayering, background correction, OME-TIFF I/O, Z-stack
+> projections) have been moved to [`microscope_imageprocessing`](https://github.com/uw-loci/microscope_imageprocessing),
+> which this library depends on. This package focuses on **PPM-specific** analysis and calibration.
 
 ![PPM Analysis Workflow](docs/images/tissue_angle_map.png)
 
@@ -15,19 +17,24 @@ Unified library for polarized light microscopy (PPM) - acquisition support and i
 
 ## Features
 
-### Acquisition Support
+### PPM Acquisition Support
 - **Hardware Polarizer Calibration**: Find crossed polarizer positions
 - **PPM Rotation Testing**: Sensitivity testing and birefringence analysis
-- **Background Correction**: Flatfield correction utilities
-- **Debayering**: CPU-based Bayer pattern demosaicing
-- **TIFF I/O**: TIFF writing with metadata support
+- **White Balance Coefficients**: PPM-specific WB calibration
 
-### Image Analysis
+### PPM Image Analysis
 - **Hue-to-Angle Calibration**: Extract fiber angles from PPM images using sunburst calibration slides
 - **PPM Image Loading**: Load and analyze PPM images with HSV extraction
 - **Fiber Angle Extraction**: Convert hue values to fiber orientation angles (0-180 degrees)
 - **White Balance Correction**: Hue shifting and preprocessing
 - **Complete Analysis Workflows**: End-to-end PPM analysis with masking and statistics
+
+### General Utilities (via microscope_imageprocessing)
+
+The following utilities are provided by the [`microscope_imageprocessing`](https://github.com/uw-loci/microscope_imageprocessing) dependency and re-exported for convenience:
+- **Debayering**: CPU-based Bayer pattern demosaicing (`CPUDebayer`)
+- **Background Correction**: Flat-field correction (`BackgroundCorrectionUtils`)
+- **OME-TIFF I/O**: Standards-compliant TIFF writing with metadata (`ome_tiff_writer`)
 
 ## Installation
 
@@ -36,10 +43,16 @@ Unified library for polarized light microscopy (PPM) - acquisition support and i
 - pip (Python package installer)
 - Git (for `pip install git+https://...` commands)
 
+**Dependencies:** This package depends on [`microscope_imageprocessing`](https://github.com/uw-loci/microscope_imageprocessing)
+for general imaging utilities. Install it first.
+
 ### Quick Install (from GitHub)
 
-**Standard installation:**
 ```bash
+# 1. Install microscope-imageprocessing (required dependency)
+pip install git+https://github.com/uw-loci/microscope_imageprocessing.git
+
+# 2. Install ppm-library
 pip install git+https://github.com/uw-loci/ppm_library.git
 ```
 
@@ -53,10 +66,10 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-### Acquisition Support
+### General Imaging (from microscope_imageprocessing)
 
 ```python
-from ppm_library import BackgroundCorrectionUtils, CPUDebayer
+from microscope_imageprocessing import BackgroundCorrectionUtils, CPUDebayer
 
 # Background correction
 corrector = BackgroundCorrectionUtils()
@@ -67,7 +80,7 @@ debayer = CPUDebayer(pattern='RGGB')
 rgb_image = debayer.debayer(bayer_image)
 ```
 
-### Image Analysis - Fiber Angle Extraction
+### PPM Analysis - Fiber Angle Extraction
 
 ```python
 from ppm_library import RadialCalibrator, PPMImage
@@ -134,22 +147,22 @@ corrected = hue_shift(image, shift)
 - `HistogramCalibration` - Correct optical anisotropy in hue histograms
 - `compute_hue_histogram()` - Compute hue histogram from RGB image
 
-### `ppm_library.imaging` - Image Processing
+### `ppm_library.imaging` - PPM Image Processing
 - `PPMImage` - Container for PPM image data with HSV extraction
 - `AngleMap` - Fiber angle extraction results with analysis methods
 - `load_ppm_image()` - Convenience function to load PPM images
 - `hue_shift()` - White balance correction by shifting hue
 - `compute_hue_shift_from_reference()` - Auto white balance from reference
 - `preprocess_ppm_image()` - Standard Gaussian + median preprocessing
-- `BackgroundCorrectionUtils` - Flatfield correction
-- `TifWriterUtils` - TIFF writing with metadata
 
 ### `ppm_library.analysis` - Complete Workflows
 - `analyze_ppm()` - Complete workflow for PPM image analysis
 - `PPMAnalysisResult` - Analysis results with statistics and visualization
 
-### `ppm_library.debayering` - Bayer Demosaicing
-- `CPUDebayer` - CPU-based Bayer pattern demosaicing
+### From `microscope_imageprocessing` (dependency, re-exported)
+- `CPUDebayer` - Bayer pattern demosaicing
+- `BackgroundCorrectionUtils` - Flat-field correction
+- `ome_tiff_writer` - OME-TIFF writing with metadata
 
 ## Testing
 
