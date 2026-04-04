@@ -32,7 +32,7 @@ dependencies = [
     "opencv-python>=4.8.0",
     "Pillow>=10.0.0",
     "matplotlib>=3.7.0",
-    "microscope-imaging>=0.1.0",
+    "microscope-imageprocessing>=0.1.0",
 ]
 
 [project.optional-dependencies]

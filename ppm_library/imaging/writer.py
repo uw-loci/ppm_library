@@ -12,7 +12,7 @@ import numpy as np
 import tifffile as tf
 import logging
 
-from microscope_imaging.io.writer import ome_tiff_writer as _mi_ome_writer
+from microscope_imageprocessing.io.writer import ome_tiff_writer as _mi_ome_writer
 
 logger = logging.getLogger(__name__)
 
