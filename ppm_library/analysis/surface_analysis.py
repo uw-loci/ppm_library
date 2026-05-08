@@ -31,16 +31,15 @@ This matches the intuitive meaning: higher values = more perpendicular.
 """
 
 import json
-from pathlib import Path
 
 import numpy as np
 from scipy import ndimage
 from skimage import measure
 
-
 # =========================================================================
 # GeoJSON -> Mask
 # =========================================================================
+
 
 def rasterize_geojson_to_mask(geojson_path, width, height, fill_holes=True):
     """Rasterize a GeoJSON polygon to a binary mask.
@@ -56,7 +55,6 @@ def rasterize_geojson_to_mask(geojson_path, width, height, fill_holes=True):
     Returns:
         (height, width) bool array, True inside the polygon(s)
     """
-    from skimage.draw import polygon as draw_polygon
 
     if isinstance(geojson_path, dict):
         geojson = geojson_path
@@ -67,16 +65,16 @@ def rasterize_geojson_to_mask(geojson_path, width, height, fill_holes=True):
     mask = np.zeros((height, width), dtype=bool)
 
     # Handle FeatureCollection or single Feature
-    if geojson.get('type') == 'FeatureCollection':
-        features = geojson['features']
-    elif geojson.get('type') == 'Feature':
+    if geojson.get("type") == "FeatureCollection":
+        features = geojson["features"]
+    elif geojson.get("type") == "Feature":
         features = [geojson]
     else:
         # Bare geometry
-        features = [{'geometry': geojson}]
+        features = [{"geometry": geojson}]
 
     for feature in features:
-        geom = feature.get('geometry', feature)
+        geom = feature.get("geometry", feature)
         _rasterize_geometry(geom, mask, fill_holes)
 
     return mask
@@ -84,18 +82,17 @@ def rasterize_geojson_to_mask(geojson_path, width, height, fill_holes=True):
 
 def _rasterize_geometry(geom, mask, fill_holes):
     """Rasterize a single GeoJSON geometry onto a mask."""
-    from skimage.draw import polygon as draw_polygon
 
-    geom_type = geom.get('type', '')
-    coords = geom.get('coordinates', [])
+    geom_type = geom.get("type", "")
+    coords = geom.get("coordinates", [])
 
-    if geom_type == 'Polygon':
+    if geom_type == "Polygon":
         _rasterize_polygon(coords, mask, fill_holes)
-    elif geom_type == 'MultiPolygon':
+    elif geom_type == "MultiPolygon":
         for poly_coords in coords:
             _rasterize_polygon(poly_coords, mask, fill_holes)
-    elif geom_type == 'GeometryCollection':
-        for sub_geom in geom.get('geometries', []):
+    elif geom_type == "GeometryCollection":
+        for sub_geom in geom.get("geometries", []):
             _rasterize_geometry(sub_geom, mask, fill_holes)
 
 
@@ -127,6 +124,7 @@ def _rasterize_polygon(coords, mask, fill_holes):
 # Boundary contour extraction
 # =========================================================================
 
+
 def compute_boundary_contour(boundary_mask, fill_holes=True):
     """Extract ordered boundary coordinates from a filled region mask.
 
@@ -157,6 +155,7 @@ def compute_boundary_contour(boundary_mask, fill_holes=True):
 # =========================================================================
 # Contour normals
 # =========================================================================
+
 
 def compute_contour_normals(contour_points, outward=True, boundary_mask=None):
     """Compute unit normal vectors at each contour point.
@@ -218,8 +217,8 @@ def _orient_normals_outward(contour_points, normals, mask):
 # Border zone
 # =========================================================================
 
-def compute_border_zone_mask(boundary_mask, dilation_px, mode='outside',
-                             fill_holes=True):
+
+def compute_border_zone_mask(boundary_mask, dilation_px, mode="outside", fill_holes=True):
     """Create the analysis zone around the annotation boundary.
 
     Args:
@@ -248,20 +247,21 @@ def compute_border_zone_mask(boundary_mask, dilation_px, mode='outside',
     signed_distance = dist_outside - dist_inside
 
     # Build zone mask
-    if mode == 'outside':
+    if mode == "outside":
         zone = (dist_outside > 0) & (dist_outside <= dilation_px)
-    elif mode == 'inside':
+    elif mode == "inside":
         zone = (dist_inside > 0) & (dist_inside <= dilation_px)
-    elif mode == 'both':
-        zone = ((dist_outside > 0) & (dist_outside <= dilation_px)) | \
-               ((dist_inside > 0) & (dist_inside <= dilation_px))
+    elif mode == "both":
+        zone = ((dist_outside > 0) & (dist_outside <= dilation_px)) | (
+            (dist_inside > 0) & (dist_inside <= dilation_px)
+        )
     else:
         raise ValueError(f"Invalid mode: {mode}. Use 'outside', 'inside', or 'both'.")
 
     return {
-        'zone_mask': zone,
-        'distance_map': signed_distance,
-        'dist_from_boundary': np.minimum(dist_outside, dist_inside),
+        "zone_mask": zone,
+        "distance_map": signed_distance,
+        "dist_from_boundary": np.minimum(dist_outside, dist_inside),
     }
 
 
@@ -269,8 +269,10 @@ def compute_border_zone_mask(boundary_mask, dilation_px, mode='outside',
 # Simple perpendicularity (fallback approach)
 # =========================================================================
 
-def compute_simple_perpendicularity(fiber_angles, fiber_mask, boundary_mask,
-                                     zone_mask, fill_holes=True):
+
+def compute_simple_perpendicularity(
+    fiber_angles, fiber_mask, boundary_mask, zone_mask, fill_holes=True
+):
     """Compute average fiber-to-boundary deviation using the distance
     transform gradient for surface normals.
 
@@ -338,12 +340,12 @@ def compute_simple_perpendicularity(fiber_angles, fiber_mask, boundary_mask,
     hist_3way = _compute_3way_split(valid_deviations)
 
     return {
-        'deviation_angles': deviation,
-        'mean_deviation_deg': float(np.mean(valid_deviations)) if n_valid > 0 else float('nan'),
-        'std_deviation_deg': float(np.std(valid_deviations)) if n_valid > 0 else float('nan'),
-        'histogram_10deg': hist_10deg,
-        'histogram_3way': hist_3way,
-        'n_valid_pixels': n_valid,
+        "deviation_angles": deviation,
+        "mean_deviation_deg": float(np.mean(valid_deviations)) if n_valid > 0 else float("nan"),
+        "std_deviation_deg": float(np.std(valid_deviations)) if n_valid > 0 else float("nan"),
+        "histogram_10deg": hist_10deg,
+        "histogram_3way": hist_3way,
+        "n_valid_pixels": n_valid,
     }
 
 
@@ -351,12 +353,19 @@ def compute_simple_perpendicularity(fiber_angles, fiber_mask, boundary_mask,
 # PS-TACS scoring (Qian et al. algorithm)
 # =========================================================================
 
-def compute_tacs_scores(fiber_angles, fiber_mask, boundary_mask,
-                        contour_points, contour_normals,
-                        zone_mask, distance_from_boundary,
-                        tacs_threshold_deg=30.0,
-                        falloff_sigma_px=None,
-                        smoothing_window=10):
+
+def compute_tacs_scores(
+    fiber_angles,
+    fiber_mask,
+    boundary_mask,
+    contour_points,
+    contour_normals,
+    zone_mask,
+    distance_from_boundary,
+    tacs_threshold_deg=30.0,
+    falloff_sigma_px=None,
+    smoothing_window=10,
+):
     """Compute per-contour-pixel TACS score using distance-weighted dot products.
 
     Implements the PS-TACS algorithm from Qian et al. (Eq. 2-4).
@@ -430,8 +439,7 @@ def compute_tacs_scores(fiber_angles, fiber_mask, boundary_mask,
         normal_vec = np.array([nx, ny])
 
         # Distances from this contour pixel to all fiber pixels
-        dists = np.sqrt((fiber_locs[:, 0] - cx) ** 2 +
-                        (fiber_locs[:, 1] - cy) ** 2)
+        dists = np.sqrt((fiber_locs[:, 0] - cx) ** 2 + (fiber_locs[:, 1] - cy) ** 2)
 
         # Gaussian weights
         weights = np.exp(-0.5 * (dists / falloff_sigma_px) ** 2)
@@ -461,13 +469,13 @@ def compute_tacs_scores(fiber_angles, fiber_mask, boundary_mask,
             scores_raw[i] = np.sum(tacs_assign * w) / np.sum(w)
 
     # Smooth along contour
-    if smoothing_window > 1 and N > smoothing_window:
+    if smoothing_window > 1 and smoothing_window < N:
         kernel = np.ones(smoothing_window) / smoothing_window
         # Circular convolution
-        padded = np.concatenate([scores_raw[-smoothing_window:],
-                                  scores_raw,
-                                  scores_raw[:smoothing_window]])
-        smoothed_padded = np.convolve(padded, kernel, mode='same')
+        padded = np.concatenate(
+            [scores_raw[-smoothing_window:], scores_raw, scores_raw[:smoothing_window]]
+        )
+        smoothed_padded = np.convolve(padded, kernel, mode="same")
         scores_smoothed = smoothed_padded[smoothing_window:-smoothing_window]
     else:
         scores_smoothed = scores_raw.copy()
@@ -488,21 +496,20 @@ def compute_tacs_scores(fiber_angles, fiber_mask, boundary_mask,
     total = n_tacs2 + n_tacs3
 
     return {
-        'contour_scores_raw': scores_raw,
-        'contour_scores_smoothed': scores_01,
-        'contour_tacs_class': tacs_class,
-        'contour_points': contour_points,
-        'pct_tacs2': 100.0 * n_tacs2 / total if total > 0 else 0.0,
-        'pct_tacs3': 100.0 * n_tacs3 / total if total > 0 else 0.0,
-        'n_tacs3_clusters': n_tacs3_clusters,
-        'contour_length_px': N,
-        'tacs_threshold_deg': tacs_threshold_deg,
-        'contour_density_raw': density_raw,
+        "contour_scores_raw": scores_raw,
+        "contour_scores_smoothed": scores_01,
+        "contour_tacs_class": tacs_class,
+        "contour_points": contour_points,
+        "pct_tacs2": 100.0 * n_tacs2 / total if total > 0 else 0.0,
+        "pct_tacs3": 100.0 * n_tacs3 / total if total > 0 else 0.0,
+        "n_tacs3_clusters": n_tacs3_clusters,
+        "contour_length_px": N,
+        "tacs_threshold_deg": tacs_threshold_deg,
+        "contour_density_raw": density_raw,
     }
 
 
-def compute_extended_tacs(pstacs_result, min_collagen_density=0.1,
-                         min_signal_threshold=0.02):
+def compute_extended_tacs(pstacs_result, min_collagen_density=0.1, min_signal_threshold=0.02):
     """Reclassify contour segments using Unclassified/TACS-1/2/3 scheme.
 
     Takes the output of compute_tacs_scores() and reclassifies contour
@@ -541,12 +548,14 @@ def compute_extended_tacs(pstacs_result, min_collagen_density=0.1,
             'min_collagen_density': float (echo back)
             'min_signal_threshold': float (echo back)
     """
-    density_raw = pstacs_result['contour_density_raw']
-    max_density = float(np.max(density_raw)) if len(density_raw) > 0 and np.max(density_raw) > 0 else 1.0
+    density_raw = pstacs_result["contour_density_raw"]
+    max_density = (
+        float(np.max(density_raw)) if len(density_raw) > 0 and np.max(density_raw) > 0 else 1.0
+    )
     density_norm = density_raw / max_density
 
     # Start from PS-TACS classes (2 or 3), then reclassify by density
-    ext_class = pstacs_result['contour_tacs_class'].copy()
+    ext_class = pstacs_result["contour_tacs_class"].copy()
     # Sparse collagen -> TACS-1
     ext_class[density_norm < min_collagen_density] = 1
     # No collagen signal -> Unclassified (0)
@@ -560,17 +569,17 @@ def compute_extended_tacs(pstacs_result, min_collagen_density=0.1,
     total = n0 + n1 + n2 + n3
 
     return {
-        'extended_tacs_class': ext_class,
-        'contour_points': pstacs_result['contour_points'],
-        'density_normalized': density_norm,
-        'pct_unclassified': 100.0 * n0 / total if total > 0 else 0.0,
-        'pct_tacs1': 100.0 * n1 / total if total > 0 else 0.0,
-        'pct_tacs2': 100.0 * n2 / total if total > 0 else 0.0,
-        'pct_tacs3': 100.0 * n3 / total if total > 0 else 0.0,
-        'n_tacs1_clusters': _count_clusters(ext_class, target=1),
-        'n_tacs3_clusters': _count_clusters(ext_class, target=3),
-        'min_collagen_density': min_collagen_density,
-        'min_signal_threshold': min_signal_threshold,
+        "extended_tacs_class": ext_class,
+        "contour_points": pstacs_result["contour_points"],
+        "density_normalized": density_norm,
+        "pct_unclassified": 100.0 * n0 / total if total > 0 else 0.0,
+        "pct_tacs1": 100.0 * n1 / total if total > 0 else 0.0,
+        "pct_tacs2": 100.0 * n2 / total if total > 0 else 0.0,
+        "pct_tacs3": 100.0 * n3 / total if total > 0 else 0.0,
+        "n_tacs1_clusters": _count_clusters(ext_class, target=1),
+        "n_tacs3_clusters": _count_clusters(ext_class, target=3),
+        "min_collagen_density": min_collagen_density,
+        "min_signal_threshold": min_signal_threshold,
     }
 
 
@@ -578,13 +587,14 @@ def compute_extended_tacs(pstacs_result, min_collagen_density=0.1,
 # All-in-one entry point
 # =========================================================================
 
+
 def analyze_perpendicularity(
     rgb_array,
     calibration,
     boundary_mask,
     dilation_um,
     pixel_size_um,
-    mode='outside',
+    mode="outside",
     fill_holes=True,
     tacs_threshold_deg=30.0,
     smoothing_window=10,
@@ -640,8 +650,10 @@ def analyze_perpendicularity(
     """
     import time as _time
     import logging as _logging
+
     _perf_log = _logging.getLogger("ppm.perf")
     _t0 = _time.perf_counter()
+
     def _lap(label):
         nonlocal _t0
         now = _time.perf_counter()
@@ -652,6 +664,7 @@ def analyze_perpendicularity(
         compute_angles_from_rgb,
         compute_ppm_positive_mask,
     )
+
     _lap("imports")
 
     dilation_px = dilation_um / pixel_size_um
@@ -659,17 +672,18 @@ def analyze_perpendicularity(
 
     # Compute fiber angles
     angle_result = compute_angles_from_rgb(
-        rgb_array, calibration,
+        rgb_array,
+        calibration,
         saturation_threshold=saturation_threshold,
         value_threshold=value_threshold,
         exclude_clipped=True,
         min_rgb_intensity=min_rgb_intensity,
     )
     _lap("compute_angles_from_rgb")
-    fiber_angles = angle_result['angles']
-    fiber_mask = angle_result['valid_mask']
-    n_clipped = angle_result.get('n_clipped', 0)
-    n_dark = angle_result.get('n_dark_excluded', 0)
+    fiber_angles = angle_result["angles"]
+    fiber_mask = angle_result["valid_mask"]
+    n_clipped = angle_result.get("n_clipped", 0)
+    n_dark = angle_result.get("n_dark_excluded", 0)
     total_pixels = rgb_array.shape[0] * rgb_array.shape[1]
     hsv_valid_count = int(np.sum(fiber_mask))
 
@@ -678,9 +692,7 @@ def analyze_perpendicularity(
     if foreground_mask is not None:
         fg = foreground_mask.astype(bool)
         if fg.shape != fiber_mask.shape:
-            raise ValueError(
-                f"Foreground mask shape {fg.shape} != image shape {fiber_mask.shape}"
-            )
+            raise ValueError(f"Foreground mask shape {fg.shape} != image shape {fiber_mask.shape}")
         fiber_mask = fiber_mask & fg
     elif biref_array is not None:
         biref_mask = compute_ppm_positive_mask(biref_array, biref_threshold)
@@ -714,13 +726,16 @@ def analyze_perpendicularity(
     zone_result = compute_border_zone_mask(
         mask_for_analysis, dilation_px_int, mode=mode, fill_holes=False
     )
-    zone_mask = zone_result['zone_mask']
-    dist_from_boundary = zone_result['dist_from_boundary']
+    zone_mask = zone_result["zone_mask"]
+    dist_from_boundary = zone_result["dist_from_boundary"]
     _lap("compute_border_zone_mask")
 
     # Simple approach (uses smoothed mask for distance-transform normals)
     simple_result = compute_simple_perpendicularity(
-        fiber_angles, fiber_mask, mask_for_contours, zone_mask,
+        fiber_angles,
+        fiber_mask,
+        mask_for_contours,
+        zone_mask,
         fill_holes=False,
     )
 
@@ -738,9 +753,13 @@ def analyze_perpendicularity(
             main_contour, outward=True, boundary_mask=mask_for_contours
         )
         pstacs_result = compute_tacs_scores(
-            fiber_angles, fiber_mask, mask_for_analysis,
-            main_contour, normals,
-            zone_mask, dist_from_boundary,
+            fiber_angles,
+            fiber_mask,
+            mask_for_analysis,
+            main_contour,
+            normals,
+            zone_mask,
+            dist_from_boundary,
             tacs_threshold_deg=tacs_threshold_deg,
             smoothing_window=smoothing_window,
         )
@@ -749,7 +768,7 @@ def analyze_perpendicularity(
 
         # Contour length in microns
         diffs = np.diff(main_contour, axis=0)
-        segment_lengths = np.sqrt(np.sum(diffs ** 2, axis=1))
+        segment_lengths = np.sqrt(np.sum(diffs**2, axis=1))
         contour_length_um = float(np.sum(segment_lengths) * pixel_size_um)
 
     # Extended TACS: reclassify sparse-collagen regions as TACS-1
@@ -762,26 +781,26 @@ def analyze_perpendicularity(
         )
 
     return {
-        'simple': simple_result,
-        'pstacs': pstacs_result,
-        'extended_tacs': extended_tacs_result,
-        'dilation_px': dilation_px_int,
-        'pixel_size_um': pixel_size_um,
-        'contour_length_um': contour_length_um,
-        'n_contours': len(contours),
-        'n_clipped_pixels': n_clipped,
+        "simple": simple_result,
+        "pstacs": pstacs_result,
+        "extended_tacs": extended_tacs_result,
+        "dilation_px": dilation_px_int,
+        "pixel_size_um": pixel_size_um,
+        "contour_length_um": contour_length_um,
+        "n_contours": len(contours),
+        "n_clipped_pixels": n_clipped,
         # Intermediate masks for visualization (avoids recomputation)
-        'fiber_mask': fiber_mask,
-        'zone_mask': zone_mask,
+        "fiber_mask": fiber_mask,
+        "zone_mask": zone_mask,
         # Diagnostic counts (avoids recomputation of masks for stats)
-        'mask_diagnostics': {
-            'total_pixels': total_pixels,
-            'hsv_valid_pixels': hsv_valid_count,
-            'clipped_pixels': n_clipped,
-            'dark_excluded_pixels': n_dark,
-            'biref_valid_pixels': biref_valid_count,
-            'combined_valid_pixels': combined_valid_count,
-            'zone_pixels': int(np.sum(zone_mask)),
+        "mask_diagnostics": {
+            "total_pixels": total_pixels,
+            "hsv_valid_pixels": hsv_valid_count,
+            "clipped_pixels": n_clipped,
+            "dark_excluded_pixels": n_dark,
+            "biref_valid_pixels": biref_valid_count,
+            "combined_valid_pixels": combined_valid_count,
+            "zone_pixels": int(np.sum(zone_mask)),
         },
     }
 
@@ -789,6 +808,7 @@ def analyze_perpendicularity(
 # =========================================================================
 # Histogram helpers
 # =========================================================================
+
 
 def _compute_deviation_histogram(deviations, bin_width=10):
     """Compute histogram of deviation angles in fixed-width bins.
@@ -806,20 +826,20 @@ def _compute_deviation_histogram(deviations, bin_width=10):
 
     if len(deviations) == 0:
         return {
-            'bin_edges': bin_edges.tolist(),
-            'bin_centers': bin_centers.tolist(),
-            'counts': [0] * n_bins,
-            'fractions': [0.0] * n_bins,
+            "bin_edges": bin_edges.tolist(),
+            "bin_centers": bin_centers.tolist(),
+            "counts": [0] * n_bins,
+            "fractions": [0.0] * n_bins,
         }
 
     counts, _ = np.histogram(deviations, bins=bin_edges)
     total = len(deviations)
 
     return {
-        'bin_edges': bin_edges.tolist(),
-        'bin_centers': bin_centers.tolist(),
-        'counts': counts.tolist(),
-        'fractions': (counts / total).tolist() if total > 0 else [0.0] * n_bins,
+        "bin_edges": bin_edges.tolist(),
+        "bin_centers": bin_centers.tolist(),
+        "counts": counts.tolist(),
+        "fractions": (counts / total).tolist() if total > 0 else [0.0] * n_bins,
     }
 
 
@@ -837,8 +857,12 @@ def _compute_3way_split(deviations):
     n = len(deviations)
     if n == 0:
         return {
-            'parallel_count': 0, 'oblique_count': 0, 'perpendicular_count': 0,
-            'pct_parallel': 0.0, 'pct_oblique': 0.0, 'pct_perpendicular': 0.0,
+            "parallel_count": 0,
+            "oblique_count": 0,
+            "perpendicular_count": 0,
+            "pct_parallel": 0.0,
+            "pct_oblique": 0.0,
+            "pct_perpendicular": 0.0,
         }
 
     parallel = int(np.sum(deviations < 30))
@@ -846,12 +870,12 @@ def _compute_3way_split(deviations):
     perpendicular = int(np.sum(deviations >= 60))
 
     return {
-        'parallel_count': parallel,
-        'oblique_count': oblique,
-        'perpendicular_count': perpendicular,
-        'pct_parallel': 100.0 * parallel / n,
-        'pct_oblique': 100.0 * oblique / n,
-        'pct_perpendicular': 100.0 * perpendicular / n,
+        "parallel_count": parallel,
+        "oblique_count": oblique,
+        "perpendicular_count": perpendicular,
+        "pct_parallel": 100.0 * parallel / n,
+        "pct_oblique": 100.0 * oblique / n,
+        "pct_perpendicular": 100.0 * perpendicular / n,
     }
 
 
@@ -872,14 +896,14 @@ def _count_clusters(tacs_class, target=3):
 def _empty_tacs_result(N, contour_points, tacs_threshold_deg):
     """Return an empty PS-TACS result when no valid data is available."""
     return {
-        'contour_scores_raw': np.zeros(N),
-        'contour_scores_smoothed': np.full(N, 0.5),
-        'contour_tacs_class': np.full(N, 2, dtype=int),
-        'contour_points': contour_points,
-        'pct_tacs2': 100.0,
-        'pct_tacs3': 0.0,
-        'n_tacs3_clusters': 0,
-        'contour_length_px': N,
-        'tacs_threshold_deg': tacs_threshold_deg,
-        'contour_density_raw': np.zeros(N),
+        "contour_scores_raw": np.zeros(N),
+        "contour_scores_smoothed": np.full(N, 0.5),
+        "contour_tacs_class": np.full(N, 2, dtype=int),
+        "contour_points": contour_points,
+        "pct_tacs2": 100.0,
+        "pct_tacs3": 0.0,
+        "n_tacs3_clusters": 0,
+        "contour_length_px": N,
+        "tacs_threshold_deg": tacs_threshold_deg,
+        "contour_density_raw": np.zeros(N),
     }

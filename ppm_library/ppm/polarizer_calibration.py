@@ -41,7 +41,7 @@ class PolarizerCalibrationUtils:
         exposure_ms: float = 10.0,
         channel: int = 1,
         min_prominence: float = 0.1,
-        logger_instance = None
+        logger_instance=None,
     ) -> Dict[str, Any]:
         """
         Calibrate polarizer by sweeping rotation angles and finding crossed positions.
@@ -94,7 +94,7 @@ class PolarizerCalibrationUtils:
             logger_instance = logger
 
         # Verify hardware has PPM methods
-        if not hasattr(hardware, 'set_psg_ticks') or not hasattr(hardware, 'get_psg_ticks'):
+        if not hasattr(hardware, "set_psg_ticks") or not hasattr(hardware, "get_psg_ticks"):
             raise AttributeError(
                 "Hardware does not have PPM methods initialized. "
                 "Check that ppm_optics is set in configuration and not 'NA'."
@@ -111,7 +111,9 @@ class PolarizerCalibrationUtils:
             f"Starting polarizer calibration sweep: "
             f"{start_angle} deg to {end_angle} deg in {step_size} deg steps"
         )
-        logger_instance.info(f"Exposure: {exposure_ms} ms, Channel: {channel if channel is not None else 'mean'}")
+        logger_instance.info(
+            f"Exposure: {exposure_ms} ms, Channel: {channel if channel is not None else 'mean'}"
+        )
         logger_instance.info(f"Expected duration: ~{len(angles) * 0.5:.0f} seconds")
 
         # Sweep through optical angles
@@ -141,14 +143,16 @@ class PolarizerCalibrationUtils:
         logger_instance.info(f"Intensity range: {intensities.min():.1f} to {intensities.max():.1f}")
 
         # Normalize intensities
-        intensities_norm = (intensities - intensities.min()) / (intensities.max() - intensities.min())
+        intensities_norm = (intensities - intensities.min()) / (
+            intensities.max() - intensities.min()
+        )
 
         # Define sine function
         def sine_func(x, amplitude, frequency, phase, offset):
             return amplitude * np.sin(2 * np.pi * frequency * x + phase) + offset
 
         # Initial guess (180 deg period for polarizers)
-        initial_guess = [0.5, 1.0/180.0, 0.0, 0.5]
+        initial_guess = [0.5, 1.0 / 180.0, 0.0, 0.5]
 
         # Fit sine function
         try:
@@ -169,7 +173,9 @@ class PolarizerCalibrationUtils:
 
         # Find local minima
         inverted = -intensities_norm
-        peaks, properties = find_peaks(inverted, prominence=min_prominence, distance=len(angles)/10)
+        peaks, properties = find_peaks(
+            inverted, prominence=min_prominence, distance=len(angles) / 10
+        )
 
         if len(peaks) == 0:
             raise ValueError(
@@ -185,12 +191,12 @@ class PolarizerCalibrationUtils:
             logger_instance.info(f"  {angle:.1f} deg: intensity = {intensity:.1f}")
 
         return {
-            'angles': angles,
-            'intensities': intensities,
-            'minima_angles': minima_angles,
-            'minima_intensities': minima_intensities,
-            'fit_params': popt,
-            'fit_curve': fit_curve
+            "angles": angles,
+            "intensities": intensities,
+            "minima_angles": minima_angles,
+            "minima_intensities": minima_intensities,
+            "fit_params": popt,
+            "fit_curve": fit_curve,
         }
 
     @staticmethod
@@ -202,8 +208,8 @@ class PolarizerCalibrationUtils:
         fine_step_deg: float = 0.1,
         exposure_ms: float = 10.0,
         channel: int = 1,
-        logger_instance = None,
-        progress_callback = None
+        logger_instance=None,
+        progress_callback=None,
     ) -> Dict[str, Any]:
         """
         Two-stage calibration to determine exact hardware offset for PPM rotation stage.
@@ -264,15 +270,13 @@ class PolarizerCalibrationUtils:
 
         rotation_device = rotation_stage.device_name
         hw_per_deg = rotation_stage.hw_per_deg
-        logger_instance.info(f"=== TWO-STAGE HARDWARE OFFSET CALIBRATION ===")
+        logger_instance.info("=== TWO-STAGE HARDWARE OFFSET CALIBRATION ===")
         logger_instance.info(f"Rotation device: {rotation_device}")
 
         # Get current hardware position as reference
         current_hw_pos = rotation_stage.get_raw_position()
         logger_instance.info(f"Current hardware position: {current_hw_pos:.1f}")
-        logger_instance.info(
-            f"Stage type: 1 deg = {hw_per_deg:.0f} encoder counts"
-        )
+        logger_instance.info(f"Stage type: 1 deg = {hw_per_deg:.0f} encoder counts")
 
         # ===== STAGE 1: COARSE SWEEP =====
         logger_instance.info("\n--- STAGE 1: COARSE SWEEP ---")
@@ -285,7 +289,9 @@ class PolarizerCalibrationUtils:
         coarse_start_hw = current_hw_pos - (coarse_hw_range / 2)
         coarse_end_hw = current_hw_pos + (coarse_hw_range / 2)
 
-        coarse_hw_positions = np.arange(coarse_start_hw, coarse_end_hw + coarse_hw_step, coarse_hw_step)
+        coarse_hw_positions = np.arange(
+            coarse_start_hw, coarse_end_hw + coarse_hw_step, coarse_hw_step
+        )
         coarse_intensities = []
 
         hardware.set_exposure(exposure_ms)
@@ -312,7 +318,9 @@ class PolarizerCalibrationUtils:
             try:
                 img, tags = hardware.snap_image()
             except Exception as e:
-                raise RuntimeError(f"Image acquisition failed at hardware position {hw_pos:.0f}: {e}")
+                raise RuntimeError(
+                    f"Image acquisition failed at hardware position {hw_pos:.0f}: {e}"
+                )
 
             # Calculate mean intensity
             if channel is not None and len(img.shape) == 3:
@@ -342,7 +350,7 @@ class PolarizerCalibrationUtils:
 
         # Initial guess for sine fit (180 deg period)
         period_hw = 180.0 * hw_per_deg
-        initial_guess = [0.5, 1.0/period_hw, 0.0, 0.5]
+        initial_guess = [0.5, 1.0 / period_hw, 0.0, 0.5]
 
         try:
             popt, _ = curve_fit(sine_func, coarse_hw_positions, intensities_norm, p0=initial_guess)
@@ -423,7 +431,9 @@ class PolarizerCalibrationUtils:
                 # Send progress update (keeps connection alive during fine sweeps)
                 if progress_callback:
                     try:
-                        progress_callback(j, total_fine, f"fine_{min_idx+1}", f"Fine sweep {min_idx+1}")
+                        progress_callback(
+                            j, total_fine, f"fine_{min_idx+1}", f"Fine sweep {min_idx+1}"
+                        )
                     except Exception:
                         pass
 
@@ -450,17 +460,19 @@ class PolarizerCalibrationUtils:
 
             exact_minima.append(exact_hw_pos)
 
-            logger_instance.info(f"  Exact minimum found:")
+            logger_instance.info("  Exact minimum found:")
             logger_instance.info(f"    Hardware position: {exact_hw_pos:.1f}")
             logger_instance.info(f"    Intensity: {exact_intensity:.1f}")
 
-            fine_results.append({
-                'approximate_position': approx_hw_pos,
-                'fine_hw_positions': fine_hw_positions,
-                'fine_intensities': fine_intensities,
-                'exact_position': exact_hw_pos,
-                'exact_intensity': exact_intensity
-            })
+            fine_results.append(
+                {
+                    "approximate_position": approx_hw_pos,
+                    "fine_hw_positions": fine_hw_positions,
+                    "fine_intensities": fine_intensities,
+                    "exact_position": exact_hw_pos,
+                    "exact_intensity": exact_intensity,
+                }
+            )
 
         # ===== CALCULATE RECOMMENDATIONS =====
         logger_instance.info("\n--- CALIBRATION RESULTS ---")
@@ -479,28 +491,25 @@ class PolarizerCalibrationUtils:
             optical_angles.append(optical_angle)
 
         logger_instance.info(f"Recommended ppm_pizstage_offset: {recommended_offset:.1f}")
-        logger_instance.info(f"Exact minima positions (hardware):")
+        logger_instance.info("Exact minima positions (hardware):")
         for i, (hw_pos, opt_angle) in enumerate(zip(exact_minima_sorted, optical_angles)):
             logger_instance.info(f"  Minimum {i+1}: {hw_pos:.1f} ({opt_angle:.2f} deg optical)")
 
         return {
-            'rotation_device': rotation_device,
-            'coarse_hardware_positions': coarse_hw_positions,
-            'coarse_intensities': coarse_intensities,
-            'approximate_minima': approximate_minima,
-            'fine_results': fine_results,
-            'exact_minima': exact_minima_sorted,
-            'recommended_offset': recommended_offset,
-            'optical_angles': optical_angles,
-            'hw_per_deg': hw_per_deg
+            "rotation_device": rotation_device,
+            "coarse_hardware_positions": coarse_hw_positions,
+            "coarse_intensities": coarse_intensities,
+            "approximate_minima": approximate_minima,
+            "fine_results": fine_results,
+            "exact_minima": exact_minima_sorted,
+            "recommended_offset": recommended_offset,
+            "optical_angles": optical_angles,
+            "hw_per_deg": hw_per_deg,
         }
 
     @staticmethod
     def calibrate_hardware_offset_with_stability_check(
-        hardware,
-        num_runs: int = 3,
-        stability_threshold_counts: float = 50.0,
-        **kwargs
+        hardware, num_runs: int = 3, stability_threshold_counts: float = 50.0, **kwargs
     ) -> Dict[str, Any]:
         """
         Run hardware offset calibration multiple times to check optical stability.
@@ -528,14 +537,16 @@ class PolarizerCalibrationUtils:
         Raises:
             RuntimeError: If optical instability exceeds threshold
         """
-        logger_instance = kwargs.get('logger_instance', logger)
-        progress_callback = kwargs.get('progress_callback', None)
+        logger_instance = kwargs.get("logger_instance", logger)
+        progress_callback = kwargs.get("progress_callback")
 
-        logger_instance.info("="*70)
+        logger_instance.info("=" * 70)
         logger_instance.info("POLARIZER CALIBRATION WITH STABILITY CHECK")
-        logger_instance.info("="*70)
+        logger_instance.info("=" * 70)
         logger_instance.info(f"Running {num_runs} calibrations to validate optical stability")
-        logger_instance.info(f"Stability threshold: +/-{stability_threshold_counts:.1f} encoder counts")
+        logger_instance.info(
+            f"Stability threshold: +/-{stability_threshold_counts:.1f} encoder counts"
+        )
 
         all_results = []
         all_offsets = []
@@ -554,27 +565,30 @@ class PolarizerCalibrationUtils:
 
             # Pass the wrapper callback
             run_kwargs = dict(kwargs)
-            run_kwargs['progress_callback'] = run_progress_callback if progress_callback else None
+            run_kwargs["progress_callback"] = run_progress_callback if progress_callback else None
 
             result = PolarizerCalibrationUtils.calibrate_hardware_offset_two_stage(
                 hardware, **run_kwargs
             )
 
             all_results.append(result)
-            all_offsets.append(result['recommended_offset'])
+            all_offsets.append(result["recommended_offset"])
 
-            logger_instance.info(f"Run {run_num} completed: offset = {result['recommended_offset']:.1f}")
+            logger_instance.info(
+                f"Run {run_num} completed: offset = {result['recommended_offset']:.1f}"
+            )
 
             # Brief pause between runs to allow hardware to settle
             if run_num < num_runs:
                 import time
+
                 time.sleep(2.0)
 
         # Calculate stability metrics
         all_offsets = np.array(all_offsets)
 
         # Get hardware conversion factor from first run
-        hw_per_deg = all_results[0]['hw_per_deg']
+        hw_per_deg = all_results[0]["hw_per_deg"]
         half_rotation_counts = 180.0 * hw_per_deg  # e.g., 180000 for PI stage
 
         # Normalize offsets to a single 180-degree range
@@ -596,16 +610,24 @@ class PolarizerCalibrationUtils:
         logger_instance.info("STABILITY ANALYSIS")
         logger_instance.info(f"{'='*70}")
         logger_instance.info(f"Raw offsets from {num_runs} runs: {all_offsets}")
-        logger_instance.info(f"Normalized offsets (mod 180 deg for equivalence): {normalized_offsets}")
-        logger_instance.info(f"Note: Crossed polarizers repeat every 180 deg, so 0 deg = 180 deg")
+        logger_instance.info(
+            f"Normalized offsets (mod 180 deg for equivalence): {normalized_offsets}"
+        )
+        logger_instance.info("Note: Crossed polarizers repeat every 180 deg, so 0 deg = 180 deg")
         logger_instance.info(f"Recommended offset (from run 1): {recommended_offset:.1f}")
-        logger_instance.info(f"Std deviation: {std_offset:.2f} counts ({std_offset/hw_per_deg:.4f} deg)")
-        logger_instance.info(f"Range (max-min): {range_offset:.1f} counts ({range_offset/hw_per_deg:.4f} deg)")
+        logger_instance.info(
+            f"Std deviation: {std_offset:.2f} counts ({std_offset/hw_per_deg:.4f} deg)"
+        )
+        logger_instance.info(
+            f"Range (max-min): {range_offset:.1f} counts ({range_offset/hw_per_deg:.4f} deg)"
+        )
 
         is_stable = range_offset <= stability_threshold_counts
 
         if is_stable:
-            logger_instance.info(f"RESULT: STABLE - Variation {range_offset:.1f} counts ({range_offset/hw_per_deg:.4f} deg) within threshold")
+            logger_instance.info(
+                f"RESULT: STABLE - Variation {range_offset:.1f} counts ({range_offset/hw_per_deg:.4f} deg) within threshold"
+            )
         else:
             warning_msg = (
                 f"WARNING: OPTICAL INSTABILITY DETECTED!\n"
@@ -621,14 +643,14 @@ class PolarizerCalibrationUtils:
             logger_instance.warning(warning_msg)
 
         return {
-            'all_runs': all_results,
-            'recommended_offset': float(recommended_offset),
-            'offset_std': float(std_offset),
-            'offset_range': float(range_offset),
-            'is_stable': is_stable,
-            'stability_warning': None if is_stable else warning_msg,
-            'individual_offsets': all_offsets.tolist(),
-            'normalized_offsets': normalized_offsets.tolist(),
-            'rotation_device': all_results[0]['rotation_device'],
-            'hw_per_deg': all_results[0]['hw_per_deg']
+            "all_runs": all_results,
+            "recommended_offset": float(recommended_offset),
+            "offset_std": float(std_offset),
+            "offset_range": float(range_offset),
+            "is_stable": is_stable,
+            "stability_warning": None if is_stable else warning_msg,
+            "individual_offsets": all_offsets.tolist(),
+            "normalized_offsets": normalized_offsets.tolist(),
+            "rotation_device": all_results[0]["rotation_device"],
+            "hw_per_deg": all_results[0]["hw_per_deg"],
         }

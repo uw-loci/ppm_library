@@ -15,7 +15,7 @@ class TestCPUDebayerBasic:
 
     def test_debayer_rggb_pattern(self, synthetic_bayer_rggb, expected_rgb_from_bayer_rggb):
         """Test debayering of RGGB Bayer pattern."""
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(synthetic_bayer_rggb)
 
         # Check output shape
@@ -44,9 +44,9 @@ class TestCPUDebayerBasic:
         br_r = rgb[320, 320, 0]
         br_g = rgb[320, 320, 1]
         br_b = rgb[320, 320, 2]
-        assert br_r > 150 and br_g > 150 and br_b > 150, (
-            f"Expected white in bottom-right, got RGB=({br_r}, {br_g}, {br_b})"
-        )
+        assert (
+            br_r > 150 and br_g > 150 and br_b > 150
+        ), f"Expected white in bottom-right, got RGB=({br_r}, {br_g}, {br_b})"
 
     def test_debayer_grbg_pattern(self):
         """Test debayering of GRBG Bayer pattern."""
@@ -60,10 +60,10 @@ class TestCPUDebayerBasic:
         # Create simple pattern
         bayer[0::2, 0::2] = 200  # G positions
         bayer[0::2, 1::2] = 200  # R positions
-        bayer[1::2, 0::2] = 50   # B positions
+        bayer[1::2, 0::2] = 50  # B positions
         bayer[1::2, 1::2] = 200  # G positions
 
-        debayer = CPUDebayer(pattern='GRBG')
+        debayer = CPUDebayer(pattern="GRBG")
         rgb = debayer.debayer(bayer)
 
         assert rgb.shape == (size, size, 3)
@@ -85,10 +85,10 @@ class TestCPUDebayerBasic:
 
         bayer[0::2, 0::2] = 200  # G positions
         bayer[0::2, 1::2] = 200  # B positions
-        bayer[1::2, 0::2] = 50   # R positions
+        bayer[1::2, 0::2] = 50  # R positions
         bayer[1::2, 1::2] = 200  # G positions
 
-        debayer = CPUDebayer(pattern='GBRG')
+        debayer = CPUDebayer(pattern="GBRG")
         rgb = debayer.debayer(bayer)
 
         assert rgb.shape == (size, size, 3)
@@ -106,9 +106,9 @@ class TestCPUDebayerBasic:
         bayer[0::2, 0::2] = 200  # B positions
         bayer[0::2, 1::2] = 200  # G positions
         bayer[1::2, 0::2] = 200  # G positions
-        bayer[1::2, 1::2] = 50   # R positions
+        bayer[1::2, 1::2] = 50  # R positions
 
-        debayer = CPUDebayer(pattern='BGGR')
+        debayer = CPUDebayer(pattern="BGGR")
         rgb = debayer.debayer(bayer)
 
         assert rgb.shape == (size, size, 3)
@@ -127,7 +127,7 @@ class TestCPUDebayerBitDepth:
         """Test debayering with uint8 input."""
         bayer = np.random.randint(0, 255, (256, 256), dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(bayer)
 
         assert rgb.dtype == np.uint8
@@ -137,7 +137,7 @@ class TestCPUDebayerBitDepth:
         """Test debayering with uint16 input (common for scientific cameras)."""
         bayer = np.random.randint(0, 65535, (256, 256), dtype=np.uint16)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(bayer)
 
         # Output dtype should match input dtype (dtype preservation)
@@ -155,7 +155,7 @@ class TestCPUDebayerBitDepth:
         # Right half: bright
         bayer[:, 128:] = 200
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(bayer)
 
         # Left half should be dimmer than right half
@@ -173,7 +173,7 @@ class TestCPUDebayerEdgeCases:
         # 2x2 is the minimum for a Bayer pattern
         tiny_bayer = np.array([[100, 150], [150, 100]], dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
 
         try:
             rgb = debayer.debayer(tiny_bayer)
@@ -187,7 +187,7 @@ class TestCPUDebayerEdgeCases:
         # but should handle odd dimensions gracefully
         odd_bayer = np.random.randint(0, 255, (257, 257), dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
 
         try:
             rgb = debayer.debayer(odd_bayer)
@@ -201,7 +201,7 @@ class TestCPUDebayerEdgeCases:
         """Test debayering with all-zero (black) image."""
         black_bayer = np.zeros((256, 256), dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(black_bayer)
 
         # Output should be all zeros
@@ -211,7 +211,7 @@ class TestCPUDebayerEdgeCases:
         """Test debayering with saturated (all-white) image."""
         white_bayer = np.full((256, 256), 255, dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(white_bayer)
 
         # Output should be all 255 (white)
@@ -220,13 +220,13 @@ class TestCPUDebayerEdgeCases:
     def test_invalid_pattern_raises_error(self):
         """Test that invalid Bayer pattern raises appropriate error."""
         with pytest.raises((ValueError, KeyError)):
-            CPUDebayer(pattern='INVALID')
+            CPUDebayer(pattern="INVALID")
 
     def test_invalid_input_shape_raises_error(self):
         """Test that non-2D input raises appropriate error."""
         invalid_input = np.random.randint(0, 255, (256, 256, 3), dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
 
         with pytest.raises((ValueError, AssertionError)):
             debayer.debayer(invalid_input)
@@ -243,7 +243,7 @@ class TestCPUDebayerClipping:
         # Add some variation
         bayer[::2, ::2] = 255
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(bayer)
 
         # Should clip to 255, not overflow
@@ -254,7 +254,7 @@ class TestCPUDebayerClipping:
         """Test that interpolation doesn't cause underflow."""
         bayer = np.full((256, 256), 5, dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(bayer)
 
         # Should clip to 0, not underflow
@@ -268,7 +268,7 @@ class TestCPUDebayerEdgeHandling:
         """Test that edge pixels are properly interpolated."""
         bayer = np.random.randint(50, 200, (256, 256), dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(bayer)
 
         # Check that edge pixels have reasonable values
@@ -281,7 +281,7 @@ class TestCPUDebayerEdgeHandling:
         """Test that corner pixels are properly handled."""
         bayer = np.random.randint(50, 200, (256, 256), dtype=np.uint8)
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         rgb = debayer.debayer(bayer)
 
         # Check corners
@@ -296,7 +296,7 @@ class TestCPUDebayerConsistency:
 
     def test_debayer_is_deterministic(self, synthetic_bayer_rggb):
         """Multiple calls should produce identical results."""
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
 
         rgb1 = debayer.debayer(synthetic_bayer_rggb)
         rgb2 = debayer.debayer(synthetic_bayer_rggb)
@@ -307,7 +307,7 @@ class TestCPUDebayerConsistency:
         """Debayering should not modify the input array."""
         original = synthetic_bayer_rggb.copy()
 
-        debayer = CPUDebayer(pattern='RGGB')
+        debayer = CPUDebayer(pattern="RGGB")
         debayer.debayer(synthetic_bayer_rggb)
 
         assert np.array_equal(synthetic_bayer_rggb, original)
@@ -321,7 +321,7 @@ class TestProcessDataFunction:
         try:
             from ppm_library.debayering.cpu import process_data
 
-            rgb = process_data(synthetic_bayer_rggb, pattern='RGGB')
+            rgb = process_data(synthetic_bayer_rggb, pattern="RGGB")
             assert rgb.shape == (512, 512, 3)
             assert rgb.dtype == np.uint8
         except ImportError:

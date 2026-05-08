@@ -95,92 +95,99 @@ def main():
     parser = argparse.ArgumentParser(
         description="PPM region analysis - compute fiber angle statistics"
     )
+    parser.add_argument("--sum", required=True, help="Path to sum image region (RGB TIFF/PNG)")
+    parser.add_argument("--calibration", required=True, help="Path to calibration .npz file")
     parser.add_argument(
-        "--sum", required=True,
-        help="Path to sum image region (RGB TIFF/PNG)"
+        "--biref", help="Path to birefringence image region (optional, for PPM+ masking)"
     )
     parser.add_argument(
-        "--calibration", required=True,
-        help="Path to calibration .npz file"
+        "--biref-threshold",
+        type=float,
+        default=100.0,
+        help="Birefringence threshold for PPM-positive detection (default: 100)",
     )
     parser.add_argument(
-        "--biref",
-        help="Path to birefringence image region (optional, for PPM+ masking)"
+        "--saturation-threshold",
+        type=float,
+        default=0.2,
+        help="Min HSV saturation for valid pixels (default: 0.2)",
     )
     parser.add_argument(
-        "--biref-threshold", type=float, default=100.0,
-        help="Birefringence threshold for PPM-positive detection (default: 100)"
+        "--value-threshold",
+        type=float,
+        default=0.2,
+        help="Min HSV value for valid pixels (default: 0.2)",
     )
     parser.add_argument(
-        "--saturation-threshold", type=float, default=0.2,
-        help="Min HSV saturation for valid pixels (default: 0.2)"
+        "--bins",
+        type=int,
+        default=18,
+        help="Number of histogram bins (default: 18 = 10-degree bins)",
     )
-    parser.add_argument(
-        "--value-threshold", type=float, default=0.2,
-        help="Min HSV value for valid pixels (default: 0.2)"
-    )
-    parser.add_argument(
-        "--bins", type=int, default=18,
-        help="Number of histogram bins (default: 18 = 10-degree bins)"
-    )
-    parser.add_argument(
-        "--roi-mask",
-        help="Path to ROI mask image (binary, same dims as sum)"
-    )
+    parser.add_argument("--roi-mask", help="Path to ROI mask image (binary, same dims as sum)")
     parser.add_argument(
         "--foreground-mask",
         help="Path to external foreground mask (binary TIFF, same dims as sum). "
-             "When provided, replaces the biref threshold mask for foreground detection. "
-             "Typically generated from a QuPath pixel classifier or thresholder."
+        "When provided, replaces the biref threshold mask for foreground detection. "
+        "Typically generated from a QuPath pixel classifier or thresholder.",
     )
     parser.add_argument(
-        "--mode", choices=["analyze", "filter", "perpendicularity"], default="analyze",
-        help="Analysis mode: 'analyze' for full stats, 'filter' for angle range, 'perpendicularity' for surface analysis"
+        "--mode",
+        choices=["analyze", "filter", "perpendicularity"],
+        default="analyze",
+        help="Analysis mode: 'analyze' for full stats, 'filter' for angle range, 'perpendicularity' for surface analysis",
     )
     parser.add_argument(
-        "--angle-low", type=float, default=0.0,
-        help="Low angle bound in degrees for filter mode (default: 0)"
+        "--angle-low",
+        type=float,
+        default=0.0,
+        help="Low angle bound in degrees for filter mode (default: 0)",
     )
     parser.add_argument(
-        "--angle-high", type=float, default=180.0,
-        help="High angle bound in degrees for filter mode (default: 180)"
+        "--angle-high",
+        type=float,
+        default=180.0,
+        help="High angle bound in degrees for filter mode (default: 180)",
     )
     # Perpendicularity mode args
+    parser.add_argument("--boundary", help="Path to boundary GeoJSON file (perpendicularity mode)")
     parser.add_argument(
-        "--boundary",
-        help="Path to boundary GeoJSON file (perpendicularity mode)"
+        "--dilation-um", type=float, default=50.0, help="Border zone width in microns (default: 50)"
     )
     parser.add_argument(
-        "--dilation-um", type=float, default=50.0,
-        help="Border zone width in microns (default: 50)"
+        "--pixel-size-um",
+        type=float,
+        help="Pixel size in microns (required for perpendicularity mode)",
     )
     parser.add_argument(
-        "--pixel-size-um", type=float,
-        help="Pixel size in microns (required for perpendicularity mode)"
+        "--zone-mode",
+        choices=["outside", "inside", "both"],
+        default="outside",
+        help="Border zone mode (default: outside)",
     )
     parser.add_argument(
-        "--zone-mode", choices=["outside", "inside", "both"], default="outside",
-        help="Border zone mode (default: outside)"
+        "--fill-holes",
+        action="store_true",
+        default=True,
+        help="Fill holes in boundary mask (default: True)",
     )
     parser.add_argument(
-        "--fill-holes", action="store_true", default=True,
-        help="Fill holes in boundary mask (default: True)"
+        "--no-fill-holes", action="store_true", help="Do NOT fill holes in boundary mask"
     )
     parser.add_argument(
-        "--no-fill-holes", action="store_true",
-        help="Do NOT fill holes in boundary mask"
+        "--tacs-threshold",
+        type=float,
+        default=30.0,
+        help="PS-TACS threshold in degrees from normal (default: 30)",
     )
     parser.add_argument(
-        "--tacs-threshold", type=float, default=30.0,
-        help="PS-TACS threshold in degrees from normal (default: 30)"
+        "--smoothing-window",
+        type=int,
+        default=10,
+        help="PS-TACS contour smoothing window (default: 10)",
     )
     parser.add_argument(
-        "--smoothing-window", type=int, default=10,
-        help="PS-TACS contour smoothing window (default: 10)"
-    )
-    parser.add_argument(
-        "--output-dir",
-        help="Directory to save detailed results (perpendicularity mode)"
+        "--output-dir", help="Directory to save detailed results (perpendicularity mode)"
     )
 
     args = parser.parse_args()
@@ -248,32 +255,31 @@ def run_analysis(args):
     )
 
     # Apply ROI mask if provided (restrict to annotation shape)
-    if roi_mask is not None and roi_mask.shape == result['mask'].shape:
-        result['mask'] = result['mask'] & roi_mask
+    if roi_mask is not None and roi_mask.shape == result["mask"].shape:
+        result["mask"] = result["mask"] & roi_mask
         # Recompute stats with ROI-restricted mask
         from ppm_library.analysis.region_analysis import (
             compute_angle_histogram,
             compute_circular_statistics,
         )
-        result['histogram'] = compute_angle_histogram(
-            result['angles'], result['mask'], bins=args.bins
+
+        result["histogram"] = compute_angle_histogram(
+            result["angles"], result["mask"], bins=args.bins
         )
-        result['stats'] = compute_circular_statistics(
-            result['angles'], result['mask']
-        )
+        result["stats"] = compute_circular_statistics(result["angles"], result["mask"])
 
     # Convert to JSON-serializable format
     return {
-        'histogram_counts': result['histogram']['counts'].tolist(),
-        'histogram_bin_edges': result['histogram']['bin_edges'].tolist(),
-        'histogram_bin_centers': result['histogram']['bin_centers'].tolist(),
-        'n_histogram_pixels': result['histogram']['n_pixels'],
-        'circular_mean': _safe_float(result['stats']['circular_mean']),
-        'circular_std': _safe_float(result['stats']['circular_std']),
-        'resultant_length': _safe_float(result['stats']['resultant_length']),
-        'n_pixels': result['stats']['n_pixels'],
-        'arithmetic_mean': _safe_float(result['stats']['arithmetic_mean']),
-        'arithmetic_std': _safe_float(result['stats']['arithmetic_std']),
+        "histogram_counts": result["histogram"]["counts"].tolist(),
+        "histogram_bin_edges": result["histogram"]["bin_edges"].tolist(),
+        "histogram_bin_centers": result["histogram"]["bin_centers"].tolist(),
+        "n_histogram_pixels": result["histogram"]["n_pixels"],
+        "circular_mean": _safe_float(result["stats"]["circular_mean"]),
+        "circular_std": _safe_float(result["stats"]["circular_std"]),
+        "resultant_length": _safe_float(result["stats"]["resultant_length"]),
+        "n_pixels": result["stats"]["n_pixels"],
+        "arithmetic_mean": _safe_float(result["stats"]["arithmetic_mean"]),
+        "arithmetic_std": _safe_float(result["stats"]["arithmetic_std"]),
     }
 
 
@@ -289,13 +295,14 @@ def run_filter(args):
     calibration = RadialCalibrationResult.load(args.calibration)
 
     angle_result = compute_angles_from_rgb(
-        sum_image, calibration,
+        sum_image,
+        calibration,
         saturation_threshold=args.saturation_threshold,
         value_threshold=args.value_threshold,
     )
 
-    angles = angle_result['angles']
-    mask = angle_result['valid_mask']
+    angles = angle_result["angles"]
+    mask = angle_result["valid_mask"]
 
     # Apply ROI mask if provided
     if args.roi_mask:
@@ -317,24 +324,23 @@ def run_filter(args):
         biref_path = Path(args.biref)
         if biref_path.exists():
             from ppm_library.analysis.region_analysis import compute_ppm_positive_mask
+
             biref_image = imread(str(biref_path))
             biref_mask = compute_ppm_positive_mask(biref_image, args.biref_threshold)
             if biref_mask.shape == mask.shape:
                 mask = mask & biref_mask
 
-    filter_result = filter_angles_by_range(
-        angles, mask, args.angle_low, args.angle_high
-    )
+    filter_result = filter_angles_by_range(angles, mask, args.angle_low, args.angle_high)
 
     n_valid = int(np.sum(mask))
-    n_in_range = filter_result['n_in_range']
+    n_in_range = filter_result["n_in_range"]
 
     return {
-        'angle_low': args.angle_low,
-        'angle_high': args.angle_high,
-        'n_in_range': n_in_range,
-        'n_valid': n_valid,
-        'fraction_in_range': n_in_range / n_valid if n_valid > 0 else 0.0,
+        "angle_low": args.angle_low,
+        "angle_high": args.angle_high,
+        "n_in_range": n_in_range,
+        "n_valid": n_valid,
+        "fraction_in_range": n_in_range / n_valid if n_valid > 0 else 0.0,
     }
 
 
@@ -391,37 +397,37 @@ def run_perpendicularity(args):
 
     # Build JSON-serializable output
     output = {
-        'dilation_px': result['dilation_px'],
-        'pixel_size_um': result['pixel_size_um'],
-        'contour_length_um': result['contour_length_um'],
-        'n_contours': result['n_contours'],
+        "dilation_px": result["dilation_px"],
+        "pixel_size_um": result["pixel_size_um"],
+        "contour_length_um": result["contour_length_um"],
+        "n_contours": result["n_contours"],
     }
 
     # Simple results
-    simple = result['simple']
-    output['simple'] = {
-        'mean_deviation_deg': _safe_float(simple['mean_deviation_deg']),
-        'std_deviation_deg': _safe_float(simple['std_deviation_deg']),
-        'histogram_10deg': simple['histogram_10deg'],
-        'histogram_3way': simple['histogram_3way'],
-        'n_valid_pixels': simple['n_valid_pixels'],
+    simple = result["simple"]
+    output["simple"] = {
+        "mean_deviation_deg": _safe_float(simple["mean_deviation_deg"]),
+        "std_deviation_deg": _safe_float(simple["std_deviation_deg"]),
+        "histogram_10deg": simple["histogram_10deg"],
+        "histogram_3way": simple["histogram_3way"],
+        "n_valid_pixels": simple["n_valid_pixels"],
     }
 
     # PS-TACS results
-    pstacs = result.get('pstacs')
+    pstacs = result.get("pstacs")
     if pstacs is not None:
-        output['pstacs'] = {
-            'pct_tacs2': pstacs['pct_tacs2'],
-            'pct_tacs3': pstacs['pct_tacs3'],
-            'n_tacs3_clusters': pstacs['n_tacs3_clusters'],
-            'contour_length_px': pstacs['contour_length_px'],
-            'tacs_threshold_deg': pstacs['tacs_threshold_deg'],
+        output["pstacs"] = {
+            "pct_tacs2": pstacs["pct_tacs2"],
+            "pct_tacs3": pstacs["pct_tacs3"],
+            "n_tacs3_clusters": pstacs["n_tacs3_clusters"],
+            "contour_length_px": pstacs["contour_length_px"],
+            "tacs_threshold_deg": pstacs["tacs_threshold_deg"],
             # Per-contour-pixel data for border visualization
-            'contour_points': pstacs['contour_points'].tolist(),
-            'contour_tacs_class': pstacs['contour_tacs_class'].tolist(),
+            "contour_points": pstacs["contour_points"].tolist(),
+            "contour_tacs_class": pstacs["contour_tacs_class"].tolist(),
         }
     else:
-        output['pstacs'] = None
+        output["pstacs"] = None
 
     return output
 
@@ -432,19 +438,19 @@ def _save_perpendicularity_details(result, output_dir):
     out_path.mkdir(parents=True, exist_ok=True)
 
     # Save simple deviation angles as numpy
-    simple = result['simple']
-    if simple['deviation_angles'] is not None:
-        np.save(str(out_path / 'deviation_angles.npy'), simple['deviation_angles'])
+    simple = result["simple"]
+    if simple["deviation_angles"] is not None:
+        np.save(str(out_path / "deviation_angles.npy"), simple["deviation_angles"])
 
     # Save PS-TACS contour data
-    pstacs = result.get('pstacs')
+    pstacs = result.get("pstacs")
     if pstacs is not None:
         np.savez(
-            str(out_path / 'pstacs_contour.npz'),
-            contour_points=pstacs['contour_points'],
-            contour_scores_raw=pstacs['contour_scores_raw'],
-            contour_scores_smoothed=pstacs['contour_scores_smoothed'],
-            contour_tacs_class=pstacs['contour_tacs_class'],
+            str(out_path / "pstacs_contour.npz"),
+            contour_points=pstacs["contour_points"],
+            contour_scores_raw=pstacs["contour_scores_raw"],
+            contour_scores_smoothed=pstacs["contour_scores_smoothed"],
+            contour_tacs_class=pstacs["contour_tacs_class"],
         )
 
 
@@ -453,7 +459,7 @@ def _load_foreground_mask(args):
 
     Returns a boolean numpy array (H, W) or None.
     """
-    if not getattr(args, 'foreground_mask', None):
+    if not getattr(args, "foreground_mask", None):
         return None
     fg_path = Path(args.foreground_mask)
     if not fg_path.exists():

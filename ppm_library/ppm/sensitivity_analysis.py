@@ -17,15 +17,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import cv2
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 import pandas as pd
-from scipy import ndimage
 from skimage import metrics, io
 import json
 import argparse
 from datetime import datetime
 import warnings
-warnings.filterwarnings('ignore')
+
+warnings.filterwarnings("ignore")
 
 
 class PPMRotationAnalyzer:
@@ -68,12 +68,7 @@ class PPMRotationAnalyzer:
         print("Loading PPM images...")
 
         # Try to find images with various naming conventions
-        patterns = [
-            angle_pattern,
-            "*_{angle}degree*.tif",
-            "*_angle{angle}*.tif",
-            "*_{angle}*.tif"
-        ]
+        patterns = [angle_pattern, "*_{angle}degree*.tif", "*_angle{angle}*.tif", "*_{angle}*.tif"]
 
         for angle in self.standard_angles:
             for pattern in patterns:
@@ -107,13 +102,14 @@ class PPMRotationAnalyzer:
             Dictionary mapping actual angles to image arrays
         """
         import re
+
         print("Loading PPM deviation images...")
 
         # Track which file each angle came from
         self.image_files = {}  # angle -> filename
 
         # Load BGACQUIRE format: {angle}.tif (e.g., 45.05.tif)
-        angle_pattern = re.compile(r'^(-?\d+\.?\d*)\.tif$', re.IGNORECASE)
+        angle_pattern = re.compile(r"^(-?\d+\.?\d*)\.tif$", re.IGNORECASE)
 
         for file_path in self.base_path.glob("*.tif"):
             match = angle_pattern.match(file_path.name)
@@ -136,8 +132,9 @@ class PPMRotationAnalyzer:
         print(f"Loaded {len(self.images)} deviation images")
         return self.images
 
-    def simulate_angular_deviations(self, reference_angle: float = 7.0,
-                                   deviations: List[float] = [0.1, 0.2, 0.3, 0.5, 1.0]) -> Dict:
+    def simulate_angular_deviations(
+        self, reference_angle: float = 7.0, deviations: List[float] = [0.1, 0.2, 0.3, 0.5, 1.0]
+    ) -> Dict:
         """
         Simulate images at slightly deviated angles through interpolation.
 
@@ -165,11 +162,11 @@ class PPMRotationAnalyzer:
             # Simple rotation simulation (small angle approximation)
             # In reality, this would be more complex due to polarizer physics
             rotation_matrix = cv2.getRotationMatrix2D(
-                (ref_image.shape[1]//2, ref_image.shape[0]//2),
-                dev, 1.0
+                (ref_image.shape[1] // 2, ref_image.shape[0] // 2), dev, 1.0
             )
-            rotated = cv2.warpAffine(ref_image, rotation_matrix,
-                                    (ref_image.shape[1], ref_image.shape[0]))
+            rotated = cv2.warpAffine(
+                ref_image, rotation_matrix, (ref_image.shape[1], ref_image.shape[0])
+            )
 
             # Also try interpolation between neighboring angles if available
             if ref_idx < len(angles) - 1:
@@ -230,21 +227,23 @@ class PPMRotationAnalyzer:
             # Pearson correlation
             correlation = np.corrcoef(ref_image.flatten(), img.flatten())[0, 1]
 
-            results.append({
-                'reference_angle': reference_angle,
-                'comparison_angle': angle,
-                'angular_difference': abs(angle - reference_angle),
-                'mae': mae,
-                'mse': mse,
-                'rmse': rmse,
-                'normalized_mae': nmae,
-                'normalized_rmse': nrmse,
-                'ssim': ssim,
-                'psnr': psnr,
-                'correlation': correlation,
-                'max_pixel_diff': float(np.max(np.abs(img - ref_image))),
-                'std_diff': np.std(img - ref_image)
-            })
+            results.append(
+                {
+                    "reference_angle": reference_angle,
+                    "comparison_angle": angle,
+                    "angular_difference": abs(angle - reference_angle),
+                    "mae": mae,
+                    "mse": mse,
+                    "rmse": rmse,
+                    "normalized_mae": nmae,
+                    "normalized_rmse": nrmse,
+                    "ssim": ssim,
+                    "psnr": psnr,
+                    "correlation": correlation,
+                    "max_pixel_diff": float(np.max(np.abs(img - ref_image))),
+                    "std_diff": np.std(img - ref_image),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -284,17 +283,19 @@ class PPMRotationAnalyzer:
             except Exception:
                 ssim = np.nan
 
-            results.append({
-                'angle1': angle1,
-                'angle2': angle2,
-                'delta_deg': delta,
-                'mae': mae,
-                'pct_change': pct_change,
-                'ssim': ssim,
-                'median_intensity_1': float(np.median(img1)),
-                'median_intensity_2': float(np.median(img2)),
-                'intensity_change': float(np.median(img2) - np.median(img1))
-            })
+            results.append(
+                {
+                    "angle1": angle1,
+                    "angle2": angle2,
+                    "delta_deg": delta,
+                    "mae": mae,
+                    "pct_change": pct_change,
+                    "ssim": ssim,
+                    "median_intensity_1": float(np.median(img1)),
+                    "median_intensity_2": float(np.median(img2)),
+                    "intensity_change": float(np.median(img2) - np.median(img1)),
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -359,24 +360,26 @@ class PPMRotationAnalyzer:
                 print(f"    Percent change: {pct_self:.10f}%")
 
                 if mae_self == 0.0 and max_diff_self == 0.0:
-                    print(f"    --> PASS: Self-comparison is exactly 0.0")
+                    print("    --> PASS: Self-comparison is exactly 0.0")
                 else:
-                    print(f"    --> FAIL: Self-comparison should be 0.0!")
+                    print("    --> FAIL: Self-comparison should be 0.0!")
 
                 # Add as first result for visibility
-                results.append({
-                    'angle': -999.0,  # Special marker for self-test
-                    'pair': 0,
-                    'mae': mae_self,
-                    'pct_change': pct_self,
-                    'median_intensity_a': float(np.median(test_f64)),
-                    'median_intensity_b': float(np.median(copy_f64)),
-                    'median_pct_change': 0.0,
-                    'ssim': 1.0,
-                    'max_pixel_diff': max_diff_self,
-                    'std_diff': 0.0,
-                    'test_type': 'SELF_COPY_SANITY_CHECK'
-                })
+                results.append(
+                    {
+                        "angle": -999.0,  # Special marker for self-test
+                        "pair": 0,
+                        "mae": mae_self,
+                        "pct_change": pct_self,
+                        "median_intensity_a": float(np.median(test_f64)),
+                        "median_intensity_b": float(np.median(copy_f64)),
+                        "median_pct_change": 0.0,
+                        "ssim": 1.0,
+                        "max_pixel_diff": max_diff_self,
+                        "std_diff": 0.0,
+                        "test_type": "SELF_COPY_SANITY_CHECK",
+                    }
+                )
 
             except Exception as e:
                 print(f"    Sanity check failed: {e}")
@@ -432,18 +435,20 @@ class PPMRotationAnalyzer:
                 angle = float(parts[1].replace("deg", ""))
                 pair_num = int(parts[2].replace("pair", ""))
 
-                results.append({
-                    'angle': angle,
-                    'pair': pair_num,
-                    'mae': mae,
-                    'pct_change': pct_change,
-                    'median_intensity_a': median_a,
-                    'median_intensity_b': median_b,
-                    'median_pct_change': median_pct_change,
-                    'ssim': ssim,
-                    'max_pixel_diff': float(np.max(np.abs(img_b - img_a))),
-                    'std_diff': float(np.std(img_b - img_a))
-                })
+                results.append(
+                    {
+                        "angle": angle,
+                        "pair": pair_num,
+                        "mae": mae,
+                        "pct_change": pct_change,
+                        "median_intensity_a": median_a,
+                        "median_intensity_b": median_b,
+                        "median_pct_change": median_pct_change,
+                        "ssim": ssim,
+                        "max_pixel_diff": float(np.max(np.abs(img_b - img_a))),
+                        "std_diff": float(np.std(img_b - img_a)),
+                    }
+                )
 
                 print(f"  {file_a.name}: {pct_change:.4f}% change (MAE={mae:.2f})")
 
@@ -454,7 +459,7 @@ class PPMRotationAnalyzer:
         if results:
             df = pd.DataFrame(results)
             # Summary statistics
-            print(f"\n  BASELINE SUMMARY (expected: ~0% change):")
+            print("\n  BASELINE SUMMARY (expected: ~0% change):")
             print(f"    Mean intensity change: {df['pct_change'].mean():.4f}%")
             print(f"    Max intensity change: {df['pct_change'].max():.4f}%")
             print(f"    Mean SSIM: {df['ssim'].mean():.6f}")
@@ -514,7 +519,9 @@ class PPMRotationAnalyzer:
             # Also compute the base image's actual dynamic range for reporting
             base_range = float(base_img.max() - base_img.min())
             base_median = float(np.median(base_img))
-            print(f"  Base image stats: median={base_median:.1f}, range={base_range:.1f}, max={base_img.max()}")
+            print(
+                f"  Base image stats: median={base_median:.1f}, range={base_range:.1f}, max={base_img.max()}"
+            )
 
             for angle in nearby:
                 if angle == base_actual:
@@ -536,29 +543,35 @@ class PPMRotationAnalyzer:
                 # Also compute the "old" way for comparison (will be much higher for flat images)
                 old_pct = (mae / max(base_range, 1)) * 100
 
-                group_results.append({
-                    'deviation': deviation,
-                    'angle': angle,
-                    'mae': mae,
-                    'pct_change': pct_change,
-                    'pct_change_old': old_pct,  # For debugging
-                    'base_median': base_median,
-                    'img_median': img_median
-                })
+                group_results.append(
+                    {
+                        "deviation": deviation,
+                        "angle": angle,
+                        "mae": mae,
+                        "pct_change": pct_change,
+                        "pct_change_old": old_pct,  # For debugging
+                        "base_median": base_median,
+                        "img_median": img_median,
+                    }
+                )
 
                 # Show detailed diagnostic info
                 print(f"  {base_actual:.2f} -> {angle:.2f} (delta={deviation:+.2f}):")
-                print(f"      Base median: {base_median:.1f}, This median: {img_median:.1f}, "
-                      f"Intensity diff: {intensity_diff:+.1f}")
+                print(
+                    f"      Base median: {base_median:.1f}, This median: {img_median:.1f}, "
+                    f"Intensity diff: {intensity_diff:+.1f}"
+                )
                 print(f"      MAE={mae:.2f}, {pct_change:.3f}% (of {full_range:.0f})")
                 if abs(intensity_diff) > 10:
-                    print(f"      WARNING: Large intensity offset ({intensity_diff:+.1f}) suggests "
-                          f"different exposure or acquisition conditions!")
+                    print(
+                        f"      WARNING: Large intensity offset ({intensity_diff:+.1f}) suggests "
+                        f"different exposure or acquisition conditions!"
+                    )
 
             if group_results:
                 # Compute sensitivity rate (% change per degree)
-                deviations = [abs(r['deviation']) for r in group_results]
-                pct_changes = [r['pct_change'] for r in group_results]
+                deviations = [abs(r["deviation"]) for r in group_results]
+                pct_changes = [r["pct_change"] for r in group_results]
 
                 # Linear fit for sensitivity rate
                 if len(deviations) > 1:
@@ -567,10 +580,10 @@ class PPMRotationAnalyzer:
                     slope = pct_changes[0] / deviations[0] if deviations[0] != 0 else 0
 
                 results[base] = {
-                    'base_angle': base_actual,
-                    'n_samples': len(group_results),
-                    'sensitivity_pct_per_deg': slope,
-                    'details': group_results
+                    "base_angle": base_actual,
+                    "n_samples": len(group_results),
+                    "sensitivity_pct_per_deg": slope,
+                    "details": group_results,
                 }
 
                 print(f"  --> Sensitivity: ~{slope:.2f}% intensity change per degree")
@@ -611,8 +624,8 @@ class PPMRotationAnalyzer:
         b2 = np.zeros_like(a0)
 
         for i, angle in enumerate(angles_rad):
-            a2 += (2/len(angles)) * image_stack[i] * np.cos(2 * angle)
-            b2 += (2/len(angles)) * image_stack[i] * np.sin(2 * angle)
+            a2 += (2 / len(angles)) * image_stack[i] * np.cos(2 * angle)
+            b2 += (2 / len(angles)) * image_stack[i] * np.sin(2 * angle)
 
         # Retardance (magnitude)
         retardance = np.sqrt(a2**2 + b2**2) / (a0 + 1e-10)
@@ -622,7 +635,9 @@ class PPMRotationAnalyzer:
 
         return retardance, orientation
 
-    def analyze_birefringence_sensitivity(self, deviations: List[float] = [0.1, 0.2, 0.5, 1.0]) -> pd.DataFrame:
+    def analyze_birefringence_sensitivity(
+        self, deviations: List[float] = [0.1, 0.2, 0.5, 1.0]
+    ) -> pd.DataFrame:
         """
         Analyze how angular deviations affect birefringence calculations.
 
@@ -674,23 +689,32 @@ class PPMRotationAnalyzer:
                         # Wrap orientation difference to [-pi, pi]
                         orientation_diff = np.angle(np.exp(1j * orientation_diff))
 
-                        results.append({
-                            'deviated_angle': target_angle,
-                            'deviation': deviation,
-                            'mean_retardance_error': np.mean(np.abs(retardance_diff)),
-                            'max_retardance_error': np.max(np.abs(retardance_diff)),
-                            'std_retardance_error': np.std(retardance_diff),
-                            'mean_orientation_error_deg': np.mean(np.abs(orientation_diff)) * 180/np.pi,
-                            'max_orientation_error_deg': np.max(np.abs(orientation_diff)) * 180/np.pi,
-                            'std_orientation_error_deg': np.std(orientation_diff) * 180/np.pi,
-                            'retardance_rmse': np.sqrt(np.mean(retardance_diff**2)),
-                            'orientation_rmse_deg': np.sqrt(np.mean(orientation_diff**2)) * 180/np.pi
-                        })
+                        results.append(
+                            {
+                                "deviated_angle": target_angle,
+                                "deviation": deviation,
+                                "mean_retardance_error": np.mean(np.abs(retardance_diff)),
+                                "max_retardance_error": np.max(np.abs(retardance_diff)),
+                                "std_retardance_error": np.std(retardance_diff),
+                                "mean_orientation_error_deg": np.mean(np.abs(orientation_diff))
+                                * 180
+                                / np.pi,
+                                "max_orientation_error_deg": np.max(np.abs(orientation_diff))
+                                * 180
+                                / np.pi,
+                                "std_orientation_error_deg": np.std(orientation_diff) * 180 / np.pi,
+                                "retardance_rmse": np.sqrt(np.mean(retardance_diff**2)),
+                                "orientation_rmse_deg": np.sqrt(np.mean(orientation_diff**2))
+                                * 180
+                                / np.pi,
+                            }
+                        )
 
         return pd.DataFrame(results)
 
-    def visualize_difference_maps(self, reference_angle: float = 7.0,
-                                 comparison_angles: List[float] = None):
+    def visualize_difference_maps(
+        self, reference_angle: float = 7.0, comparison_angles: List[float] = None
+    ):
         """
         Create visual difference maps between reference and comparison images.
 
@@ -706,15 +730,18 @@ class PPMRotationAnalyzer:
 
         if comparison_angles is None:
             # Use small deviations if available
-            comparison_angles = [a for a in self.images.keys()
-                               if a != reference_angle and abs(a - reference_angle) <= 7]
+            comparison_angles = [
+                a
+                for a in self.images.keys()
+                if a != reference_angle and abs(a - reference_angle) <= 7
+            ]
 
         n_comparisons = len(comparison_angles)
         if n_comparisons == 0:
             print("No comparison angles available")
             return
 
-        fig, axes = plt.subplots(3, n_comparisons, figsize=(4*n_comparisons, 12))
+        fig, axes = plt.subplots(3, n_comparisons, figsize=(4 * n_comparisons, 12))
         if n_comparisons == 1:
             axes = axes.reshape(-1, 1)
 
@@ -727,27 +754,27 @@ class PPMRotationAnalyzer:
             abs_diff = np.abs(diff_image)
 
             # Original comparison image
-            im1 = axes[0, i].imshow(comp_image, cmap='gray')
-            axes[0, i].set_title(f'{angle} degrees')
-            axes[0, i].axis('off')
+            im1 = axes[0, i].imshow(comp_image, cmap="gray")
+            axes[0, i].set_title(f"{angle} degrees")
+            axes[0, i].axis("off")
             plt.colorbar(im1, ax=axes[0, i], fraction=0.046)
 
             # Difference map
             vmax = np.percentile(abs_diff, 99)
-            im2 = axes[1, i].imshow(diff_image, cmap='RdBu_r', vmin=-vmax, vmax=vmax)
-            axes[1, i].set_title(f'Difference from {reference_angle} deg')
-            axes[1, i].axis('off')
+            im2 = axes[1, i].imshow(diff_image, cmap="RdBu_r", vmin=-vmax, vmax=vmax)
+            axes[1, i].set_title(f"Difference from {reference_angle} deg")
+            axes[1, i].axis("off")
             plt.colorbar(im2, ax=axes[1, i], fraction=0.046)
 
             # Absolute difference map
-            im3 = axes[2, i].imshow(abs_diff, cmap='hot')
-            axes[2, i].set_title(f'Absolute difference')
-            axes[2, i].axis('off')
+            im3 = axes[2, i].imshow(abs_diff, cmap="hot")
+            axes[2, i].set_title("Absolute difference")
+            axes[2, i].axis("off")
             plt.colorbar(im3, ax=axes[2, i], fraction=0.046)
 
-        plt.suptitle(f'PPM Image Differences (Reference: {reference_angle} degrees)', fontsize=14)
+        plt.suptitle(f"PPM Image Differences (Reference: {reference_angle} degrees)", fontsize=14)
         plt.tight_layout()
-        plt.savefig(self.output_dir / f'difference_maps_ref{reference_angle}.png', dpi=150)
+        plt.savefig(self.output_dir / f"difference_maps_ref{reference_angle}.png", dpi=150)
         plt.close()  # Don't block - file is already saved
 
     def visualize_birefringence_comparison(self, angle_sets: List[List[float]] = None):
@@ -760,12 +787,9 @@ class PPMRotationAnalyzer:
         if angle_sets is None:
             # Default: compare full set vs set with one angle slightly off
             full_set = sorted(self.images.keys())
-            angle_sets = [
-                full_set,
-                full_set  # Will modify one angle in the second set
-            ]
+            angle_sets = [full_set, full_set]  # Will modify one angle in the second set
 
-        fig, axes = plt.subplots(2, len(angle_sets), figsize=(6*len(angle_sets), 10))
+        fig, axes = plt.subplots(2, len(angle_sets), figsize=(6 * len(angle_sets), 10))
 
         for i, angles in enumerate(angle_sets):
             retardance, orientation = self.compute_birefringence(angles)
@@ -774,25 +798,26 @@ class PPMRotationAnalyzer:
                 continue
 
             # Retardance map
-            im1 = axes[0, i].imshow(retardance, cmap='viridis')
-            axes[0, i].set_title(f'Retardance (Angles: {len(angles)})')
-            axes[0, i].axis('off')
-            plt.colorbar(im1, ax=axes[0, i], fraction=0.046, label='Retardance')
+            im1 = axes[0, i].imshow(retardance, cmap="viridis")
+            axes[0, i].set_title(f"Retardance (Angles: {len(angles)})")
+            axes[0, i].axis("off")
+            plt.colorbar(im1, ax=axes[0, i], fraction=0.046, label="Retardance")
 
             # Orientation map (convert to degrees)
             orientation_deg = orientation * 180 / np.pi
-            im2 = axes[1, i].imshow(orientation_deg, cmap='hsv', vmin=-90, vmax=90)
-            axes[1, i].set_title('Orientation')
-            axes[1, i].axis('off')
-            plt.colorbar(im2, ax=axes[1, i], fraction=0.046, label='Orientation (deg)')
+            im2 = axes[1, i].imshow(orientation_deg, cmap="hsv", vmin=-90, vmax=90)
+            axes[1, i].set_title("Orientation")
+            axes[1, i].axis("off")
+            plt.colorbar(im2, ax=axes[1, i], fraction=0.046, label="Orientation (deg)")
 
-        plt.suptitle('Birefringence Analysis Comparison', fontsize=14)
+        plt.suptitle("Birefringence Analysis Comparison", fontsize=14)
         plt.tight_layout()
-        plt.savefig(self.output_dir / 'birefringence_comparison.png', dpi=150)
+        plt.savefig(self.output_dir / "birefringence_comparison.png", dpi=150)
         plt.close()  # Don't block - file is already saved
 
-    def generate_sensitivity_plots(self, df_differences: pd.DataFrame,
-                                  df_birefringence: pd.DataFrame):
+    def generate_sensitivity_plots(
+        self, df_differences: pd.DataFrame, df_birefringence: pd.DataFrame
+    ):
         """
         Generate plots showing sensitivity to angular deviations.
 
@@ -805,80 +830,104 @@ class PPMRotationAnalyzer:
         # Plot 1: Image difference metrics vs angular deviation
         if not df_differences.empty:
             ax = axes[0, 0]
-            ax.plot(df_differences['angular_difference'],
-                   df_differences['normalized_mae'], 'o-', label='Normalized MAE')
-            ax.plot(df_differences['angular_difference'],
-                   1 - df_differences['ssim'], 's-', label='1 - SSIM')
-            ax.set_xlabel('Angular Difference (degrees)')
-            ax.set_ylabel('Error Metric')
-            ax.set_title('Image Difference vs Angular Deviation')
+            ax.plot(
+                df_differences["angular_difference"],
+                df_differences["normalized_mae"],
+                "o-",
+                label="Normalized MAE",
+            )
+            ax.plot(
+                df_differences["angular_difference"],
+                1 - df_differences["ssim"],
+                "s-",
+                label="1 - SSIM",
+            )
+            ax.set_xlabel("Angular Difference (degrees)")
+            ax.set_ylabel("Error Metric")
+            ax.set_title("Image Difference vs Angular Deviation")
             ax.legend()
             ax.grid(True, alpha=0.3)
 
         # Plot 2: Correlation vs angular deviation
         if not df_differences.empty:
             ax = axes[0, 1]
-            ax.plot(df_differences['angular_difference'],
-                   df_differences['correlation'], 'o-', color='blue')
-            ax.set_xlabel('Angular Difference (degrees)')
-            ax.set_ylabel('Correlation Coefficient')
-            ax.set_title('Image Correlation vs Angular Deviation')
+            ax.plot(
+                df_differences["angular_difference"],
+                df_differences["correlation"],
+                "o-",
+                color="blue",
+            )
+            ax.set_xlabel("Angular Difference (degrees)")
+            ax.set_ylabel("Correlation Coefficient")
+            ax.set_title("Image Correlation vs Angular Deviation")
             ax.grid(True, alpha=0.3)
 
         # Plot 3: PSNR vs angular deviation
         if not df_differences.empty:
             ax = axes[0, 2]
-            ax.plot(df_differences['angular_difference'],
-                   df_differences['psnr'], 'o-', color='green')
-            ax.set_xlabel('Angular Difference (degrees)')
-            ax.set_ylabel('PSNR (dB)')
-            ax.set_title('Peak Signal-to-Noise Ratio')
+            ax.plot(
+                df_differences["angular_difference"], df_differences["psnr"], "o-", color="green"
+            )
+            ax.set_xlabel("Angular Difference (degrees)")
+            ax.set_ylabel("PSNR (dB)")
+            ax.set_title("Peak Signal-to-Noise Ratio")
             ax.grid(True, alpha=0.3)
 
         # Plot 4: Retardance error vs deviation
         if not df_birefringence.empty:
             ax = axes[1, 0]
-            for angle in df_birefringence['deviated_angle'].unique():
-                subset = df_birefringence[df_birefringence['deviated_angle'] == angle]
-                ax.plot(subset['deviation'], subset['mean_retardance_error'],
-                       'o-', label=f'{angle} deg')
-            ax.set_xlabel('Angular Deviation (degrees)')
-            ax.set_ylabel('Mean Retardance Error')
-            ax.set_title('Retardance Sensitivity to Angular Deviation')
+            for angle in df_birefringence["deviated_angle"].unique():
+                subset = df_birefringence[df_birefringence["deviated_angle"] == angle]
+                ax.plot(
+                    subset["deviation"], subset["mean_retardance_error"], "o-", label=f"{angle} deg"
+                )
+            ax.set_xlabel("Angular Deviation (degrees)")
+            ax.set_ylabel("Mean Retardance Error")
+            ax.set_title("Retardance Sensitivity to Angular Deviation")
             ax.legend()
             ax.grid(True, alpha=0.3)
 
         # Plot 5: Orientation error vs deviation
         if not df_birefringence.empty:
             ax = axes[1, 1]
-            for angle in df_birefringence['deviated_angle'].unique():
-                subset = df_birefringence[df_birefringence['deviated_angle'] == angle]
-                ax.plot(subset['deviation'], subset['mean_orientation_error_deg'],
-                       's-', label=f'{angle} deg')
-            ax.set_xlabel('Angular Deviation (degrees)')
-            ax.set_ylabel('Mean Orientation Error (degrees)')
-            ax.set_title('Orientation Sensitivity to Angular Deviation')
+            for angle in df_birefringence["deviated_angle"].unique():
+                subset = df_birefringence[df_birefringence["deviated_angle"] == angle]
+                ax.plot(
+                    subset["deviation"],
+                    subset["mean_orientation_error_deg"],
+                    "s-",
+                    label=f"{angle} deg",
+                )
+            ax.set_xlabel("Angular Deviation (degrees)")
+            ax.set_ylabel("Mean Orientation Error (degrees)")
+            ax.set_title("Orientation Sensitivity to Angular Deviation")
             ax.legend()
             ax.grid(True, alpha=0.3)
 
         # Plot 6: Combined RMSE metrics
         if not df_birefringence.empty:
             ax = axes[1, 2]
-            mean_by_dev = df_birefringence.groupby('deviation').mean()
-            ax.plot(mean_by_dev.index, mean_by_dev['retardance_rmse'],
-                   'o-', label='Retardance RMSE')
+            mean_by_dev = df_birefringence.groupby("deviation").mean()
+            ax.plot(
+                mean_by_dev.index, mean_by_dev["retardance_rmse"], "o-", label="Retardance RMSE"
+            )
             ax2 = ax.twinx()
-            ax2.plot(mean_by_dev.index, mean_by_dev['orientation_rmse_deg'],
-                    's-', color='red', label='Orientation RMSE')
-            ax.set_xlabel('Angular Deviation (degrees)')
-            ax.set_ylabel('Retardance RMSE', color='blue')
-            ax2.set_ylabel('Orientation RMSE (deg)', color='red')
-            ax.set_title('Birefringence RMSE vs Angular Deviation')
+            ax2.plot(
+                mean_by_dev.index,
+                mean_by_dev["orientation_rmse_deg"],
+                "s-",
+                color="red",
+                label="Orientation RMSE",
+            )
+            ax.set_xlabel("Angular Deviation (degrees)")
+            ax.set_ylabel("Retardance RMSE", color="blue")
+            ax2.set_ylabel("Orientation RMSE (deg)", color="red")
+            ax.set_title("Birefringence RMSE vs Angular Deviation")
             ax.grid(True, alpha=0.3)
 
-        plt.suptitle('PPM Rotation Sensitivity Analysis', fontsize=16)
+        plt.suptitle("PPM Rotation Sensitivity Analysis", fontsize=16)
         plt.tight_layout()
-        plt.savefig(self.output_dir / 'sensitivity_analysis.png', dpi=150)
+        plt.savefig(self.output_dir / "sensitivity_analysis.png", dpi=150)
         plt.close()  # Don't block - file is already saved
 
     def compute_birefringence_hue_shift(self, angle1: float, angle2: float) -> Dict:
@@ -896,7 +945,7 @@ class PPMRotationAnalyzer:
             Dict with hue shift metrics
         """
         if angle1 not in self.images or angle2 not in self.images:
-            return {'error': f'Missing angle: {angle1} or {angle2}'}
+            return {"error": f"Missing angle: {angle1} or {angle2}"}
 
         img1 = self.images[angle1]
         img2 = self.images[angle2]
@@ -910,7 +959,7 @@ class PPMRotationAnalyzer:
         img_range = img_max - img_min
 
         if img_range == 0:
-            return {'error': 'Image has no intensity variation'}
+            return {"error": "Image has no intensity variation"}
 
         # Use 256 bins but scaled to actual data range
         n_bins = min(256, int(img_range) + 1)
@@ -931,27 +980,30 @@ class PPMRotationAnalyzer:
             background_level = threshold_75  # Update for reporting
 
         if n_above == 0:
-            return {'error': 'No pixels above background (even with fallback)'}
+            return {"error": "No pixels above background (even with fallback)"}
 
         # Compute statistics for pixels above background
         diff_above_bg = diff[above_bg_mask]
 
         return {
-            'background_mode': float(background_level),
-            'threshold_used': float(threshold) if 'threshold' in dir() else float(background_level),
-            'n_pixels_above_bg': n_above,
-            'pct_pixels_above_bg': float(n_above / above_bg_mask.size * 100),
-            'mean_diff_above_bg': float(np.mean(diff_above_bg)),
-            'std_diff_above_bg': float(np.std(diff_above_bg)),
-            'median_diff_above_bg': float(np.median(diff_above_bg)),
-            'mean_intensity_above_bg_1': float(np.mean(img1[above_bg_mask])),
-            'mean_intensity_above_bg_2': float(np.mean(img2[above_bg_mask])),
+            "background_mode": float(background_level),
+            "threshold_used": float(threshold) if "threshold" in dir() else float(background_level),
+            "n_pixels_above_bg": n_above,
+            "pct_pixels_above_bg": float(n_above / above_bg_mask.size * 100),
+            "mean_diff_above_bg": float(np.mean(diff_above_bg)),
+            "std_diff_above_bg": float(np.std(diff_above_bg)),
+            "median_diff_above_bg": float(np.median(diff_above_bg)),
+            "mean_intensity_above_bg_1": float(np.mean(img1[above_bg_mask])),
+            "mean_intensity_above_bg_2": float(np.mean(img2[above_bg_mask])),
         }
 
-    def generate_report(self, df_differences: pd.DataFrame,
-                       df_birefringence: pd.DataFrame,
-                       df_adjacent: pd.DataFrame = None,
-                       fine_sensitivity: Dict = None):
+    def generate_report(
+        self,
+        df_differences: pd.DataFrame,
+        df_birefringence: pd.DataFrame,
+        df_adjacent: pd.DataFrame = None,
+        fine_sensitivity: Dict = None,
+    ):
         """
         Generate a comprehensive report of the analysis.
 
@@ -962,26 +1014,26 @@ class PPMRotationAnalyzer:
             fine_sensitivity: Dict from analyze_fine_sensitivity
         """
         report = {
-            'timestamp': datetime.now().isoformat(),
-            'base_path': str(self.base_path),
-            'n_images_loaded': len(self.images),
-            'angles_available': sorted(self.images.keys()),
-            'image_shape': self.image_shape,
-            'summary': {}
+            "timestamp": datetime.now().isoformat(),
+            "base_path": str(self.base_path),
+            "n_images_loaded": len(self.images),
+            "angles_available": sorted(self.images.keys()),
+            "image_shape": self.image_shape,
+            "summary": {},
         }
 
         # Save detailed DataFrames
         if df_differences is not None and not df_differences.empty:
-            df_differences.to_csv(self.output_dir / 'image_differences.csv', index=False)
+            df_differences.to_csv(self.output_dir / "image_differences.csv", index=False)
         if df_birefringence is not None and not df_birefringence.empty:
-            df_birefringence.to_csv(self.output_dir / 'birefringence_sensitivity.csv', index=False)
+            df_birefringence.to_csv(self.output_dir / "birefringence_sensitivity.csv", index=False)
 
         # Save JSON report
-        with open(self.output_dir / 'analysis_report.json', 'w') as f:
+        with open(self.output_dir / "analysis_report.json", "w") as f:
             json.dump(report, f, indent=2, default=str)
 
         # Generate comprehensive text summary
-        with open(self.output_dir / 'summary.txt', 'w') as f:
+        with open(self.output_dir / "summary.txt", "w") as f:
             f.write("=" * 70 + "\n")
             f.write("PPM ROTATION SENSITIVITY ANALYSIS SUMMARY\n")
             f.write("=" * 70 + "\n\n")
@@ -1001,7 +1053,7 @@ class PPMRotationAnalyzer:
             df_baseline = self.analyze_zero_rotation_baseline()
             if not df_baseline.empty:
                 # First, show SANITY CHECK result (self-copy comparison)
-                sanity_check = df_baseline[df_baseline['angle'] == -999.0]
+                sanity_check = df_baseline[df_baseline["angle"] == -999.0]
                 if not sanity_check.empty:
                     f.write("  SANITY CHECK: Image compared to EXACT COPY of itself\n")
                     f.write("  " + "-" * 50 + "\n")
@@ -1009,45 +1061,53 @@ class PPMRotationAnalyzer:
                     f.write(f"    MAE: {sc['mae']:.10f}\n")
                     f.write(f"    Max pixel diff: {sc['max_pixel_diff']:.10f}\n")
                     f.write(f"    Percent change: {sc['pct_change']:.10f}%\n")
-                    if sc['mae'] == 0.0 and sc['max_pixel_diff'] == 0.0:
-                        f.write(f"    --> PASS: Calculation verified (exactly 0.0)\n\n")
+                    if sc["mae"] == 0.0 and sc["max_pixel_diff"] == 0.0:
+                        f.write("    --> PASS: Calculation verified (exactly 0.0)\n\n")
                     else:
-                        f.write(f"    --> FAIL: Should be exactly 0.0! Check calculation.\n\n")
+                        f.write("    --> FAIL: Should be exactly 0.0! Check calculation.\n\n")
 
                 # Filter out sanity check for actual baseline analysis
-                df_actual = df_baseline[df_baseline['angle'] != -999.0]
+                df_actual = df_baseline[df_baseline["angle"] != -999.0]
 
                 if not df_actual.empty:
                     f.write(f"  ACTUAL BASELINE PAIRS: {len(df_actual)}\n")
                     f.write("  " + "-" * 50 + "\n\n")
 
                     # Group by angle
-                    for angle in sorted(df_actual['angle'].unique()):
-                        angle_data = df_actual[df_actual['angle'] == angle]
+                    for angle in sorted(df_actual["angle"].unique()):
+                        angle_data = df_actual[df_actual["angle"] == angle]
                         f.write(f"  Angle {angle:.1f} deg:\n")
-                        f.write(f"    Mean intensity change: {angle_data['pct_change'].mean():.4f}%\n")
-                        f.write(f"    Max intensity change: {angle_data['pct_change'].max():.4f}%\n")
+                        f.write(
+                            f"    Mean intensity change: {angle_data['pct_change'].mean():.4f}%\n"
+                        )
+                        f.write(
+                            f"    Max intensity change: {angle_data['pct_change'].max():.4f}%\n"
+                        )
                         f.write(f"    Mean SSIM: {angle_data['ssim'].mean():.6f}\n")
                         f.write(f"    Pairs: {len(angle_data)}\n\n")
 
                     # Overall summary (excluding sanity check)
-                    f.write(f"  OVERALL BASELINE (actual pairs only):\n")
+                    f.write("  OVERALL BASELINE (actual pairs only):\n")
                     f.write(f"    Mean intensity change: {df_actual['pct_change'].mean():.4f}%\n")
                     f.write(f"    Max intensity change: {df_actual['pct_change'].max():.4f}%\n")
                     f.write(f"    Mean SSIM: {df_actual['ssim'].mean():.6f}\n\n")
 
                     # Interpretation
-                    mean_baseline = df_actual['pct_change'].mean()
+                    mean_baseline = df_actual["pct_change"].mean()
                     if mean_baseline < 0.1:
                         f.write(f"  --> GOOD: Baseline noise is low ({mean_baseline:.4f}%)\n")
-                        f.write(f"      Measurement methodology is valid.\n\n")
+                        f.write("      Measurement methodology is valid.\n\n")
                     elif mean_baseline < 1.0:
-                        f.write(f"  --> WARNING: Baseline noise is moderate ({mean_baseline:.4f}%)\n")
-                        f.write(f"      Consider this when interpreting small deviations.\n\n")
+                        f.write(
+                            f"  --> WARNING: Baseline noise is moderate ({mean_baseline:.4f}%)\n"
+                        )
+                        f.write("      Consider this when interpreting small deviations.\n\n")
                     else:
                         f.write(f"  --> PROBLEM: Baseline noise is HIGH ({mean_baseline:.4f}%)\n")
-                        f.write(f"      This indicates a measurement problem, NOT rotation error!\n")
-                        f.write(f"      Check: camera noise, light fluctuation, or exposure drift.\n\n")
+                        f.write("      This indicates a measurement problem, NOT rotation error!\n")
+                        f.write(
+                            "      Check: camera noise, light fluctuation, or exposure drift.\n\n"
+                        )
             else:
                 f.write("  No baseline image pairs found.\n")
                 f.write("  Run zero-rotation baseline test to establish noise floor.\n\n")
@@ -1065,20 +1125,24 @@ class PPMRotationAnalyzer:
                     f.write(f"Base Angle: {data['base_angle']:.2f} deg\n")
                     f.write("-" * 50 + "\n")
                     f.write(f"  Samples: {data['n_samples']}\n")
-                    f.write(f"  Sensitivity: {data['sensitivity_pct_per_deg']:.3f}% intensity change per degree\n")
+                    f.write(
+                        f"  Sensitivity: {data['sensitivity_pct_per_deg']:.3f}% intensity change per degree\n"
+                    )
 
                     # Calculate baseline offset (constant offset present in all comparisons)
                     # This is the minimum pct_change, which represents the baseline noise floor
-                    all_pcts = [item['pct_change'] for item in data['details']]
+                    all_pcts = [item["pct_change"] for item in data["details"]]
                     baseline_offset = min(all_pcts) if all_pcts else 0
 
-                    f.write(f"  Baseline offset: {baseline_offset:.4f}% (constant offset in all comparisons)\n\n")
+                    f.write(
+                        f"  Baseline offset: {baseline_offset:.4f}% (constant offset in all comparisons)\n\n"
+                    )
 
                     # Table of deviations - show BOTH raw and corrected values
                     # Show actual filename if available
                     ref_file = "unknown"
-                    if hasattr(self, 'image_files') and data['base_angle'] in self.image_files:
-                        ref_file = self.image_files[data['base_angle']]
+                    if hasattr(self, "image_files") and data["base_angle"] in self.image_files:
+                        ref_file = self.image_files[data["base_angle"]]
                     f.write(f"  Reference: {data['base_angle']:.2f} deg (file: {ref_file})\n")
                     f.write("  'Raw Change' = total intensity difference from reference.\n")
                     f.write("  'Angular Signal' = Raw - offset = change due to angle alone.\n\n")
@@ -1086,12 +1150,14 @@ class PPMRotationAnalyzer:
                     f.write("  " + "-" * 60 + "\n")
 
                     # Sort by absolute deviation
-                    sorted_details = sorted(data['details'], key=lambda x: abs(x['deviation']))
+                    sorted_details = sorted(data["details"], key=lambda x: abs(x["deviation"]))
                     for item in sorted_details:
-                        dev = item['deviation']
-                        pct = item['pct_change']
+                        dev = item["deviation"]
+                        pct = item["pct_change"]
                         corrected = pct - baseline_offset
-                        f.write(f"  {dev:+7.2f}          |  {pct:8.4f}%      |  {corrected:8.4f}%\n")
+                        f.write(
+                            f"  {dev:+7.2f}          |  {pct:8.4f}%      |  {corrected:8.4f}%\n"
+                        )
 
                     f.write("\n")
             else:
@@ -1108,29 +1174,28 @@ class PPMRotationAnalyzer:
             if df_adjacent is not None and not df_adjacent.empty:
                 # Define base angle regions and step size bins
                 base_regions = {
-                    '0 deg (crossed)': (-1.0, 2.0),
-                    '7 deg': (5.0, 10.0),
-                    '-7 deg': (-10.0, -5.0),
-                    '90 deg (uncrossed)': (88.0, 92.0),
+                    "0 deg (crossed)": (-1.0, 2.0),
+                    "7 deg": (5.0, 10.0),
+                    "-7 deg": (-10.0, -5.0),
+                    "90 deg (uncrossed)": (88.0, 92.0),
                 }
 
                 step_bins = [
-                    ('0.05', 0.0, 0.06),
-                    ('0.10', 0.06, 0.12),
-                    ('0.15', 0.12, 0.18),
-                    ('0.20', 0.18, 0.22),
-                    ('0.25', 0.22, 0.28),
-                    ('0.30', 0.28, 0.35),
-                    ('0.50', 0.45, 0.55),
-                    ('0.70', 0.65, 0.75),
-                    ('1.00', 0.95, 1.05),
+                    ("0.05", 0.0, 0.06),
+                    ("0.10", 0.06, 0.12),
+                    ("0.15", 0.12, 0.18),
+                    ("0.20", 0.18, 0.22),
+                    ("0.25", 0.22, 0.28),
+                    ("0.30", 0.28, 0.35),
+                    ("0.50", 0.45, 0.55),
+                    ("0.70", 0.65, 0.75),
+                    ("1.00", 0.95, 1.05),
                 ]
 
                 for base_name, (base_min, base_max) in base_regions.items():
                     # Find adjacent comparisons where angle1 is in this base region
                     base_data = df_adjacent[
-                        (df_adjacent['angle1'] >= base_min) &
-                        (df_adjacent['angle1'] <= base_max)
+                        (df_adjacent["angle1"] >= base_min) & (df_adjacent["angle1"] <= base_max)
                     ]
 
                     if len(base_data) == 0:
@@ -1144,16 +1209,18 @@ class PPMRotationAnalyzer:
                     found_any = False
                     for step_name, step_min, step_max in step_bins:
                         step_data = base_data[
-                            (base_data['delta_deg'] >= step_min) &
-                            (base_data['delta_deg'] <= step_max)
+                            (base_data["delta_deg"] >= step_min)
+                            & (base_data["delta_deg"] <= step_max)
                         ]
 
                         if len(step_data) > 0:
                             found_any = True
-                            mean_mae = step_data['mae'].mean()
-                            mean_pct = step_data['pct_change'].mean()
+                            mean_mae = step_data["mae"].mean()
+                            mean_pct = step_data["pct_change"].mean()
                             n = len(step_data)
-                            f.write(f"    {step_name:5s} deg |  {mean_mae:5.2f} |  {mean_pct:8.4f}%  |  {n}\n")
+                            f.write(
+                                f"    {step_name:5s} deg |  {mean_mae:5.2f} |  {mean_pct:8.4f}%  |  {n}\n"
+                            )
 
                     if not found_any:
                         f.write("    (No fine step data in this region)\n")
@@ -1161,14 +1228,16 @@ class PPMRotationAnalyzer:
                     f.write("\n")
 
                 # Also show any large jumps (between base angles)
-                large_jumps = df_adjacent[df_adjacent['delta_deg'] > 5.0]
+                large_jumps = df_adjacent[df_adjacent["delta_deg"] > 5.0]
                 if len(large_jumps) > 0:
                     f.write("  Large jumps (between base angles):\n")
                     f.write("  " + "-" * 50 + "\n")
                     for _, row in large_jumps.iterrows():
-                        f.write(f"    {row['angle1']:.1f} -> {row['angle2']:.1f} "
-                               f"(delta={row['delta_deg']:.1f}): "
-                               f"MAE={row['mae']:.2f}, {row['pct_change']:.3f}%\n")
+                        f.write(
+                            f"    {row['angle1']:.1f} -> {row['angle2']:.1f} "
+                            f"(delta={row['delta_deg']:.1f}): "
+                            f"MAE={row['mae']:.2f}, {row['pct_change']:.3f}%\n"
+                        )
                     f.write("\n")
 
             else:
@@ -1208,14 +1277,18 @@ class PPMRotationAnalyzer:
                         mae = float(np.mean(np.abs(img_comp - img_ref)))
                         pct = (mae / full_range) * 100
                         pcts.append(pct)
-                        f.write(f"    {base_7:.2f} -> {angle:.2f} (delta={dev:+.2f}): {pct:.4f}% change\n")
+                        f.write(
+                            f"    {base_7:.2f} -> {angle:.2f} (delta={dev:+.2f}): {pct:.4f}% change\n"
+                        )
 
                 # Show corrected values
                 if pcts:
                     min_pct = min(pcts)
                     f.write(f"\n  Baseline offset: {min_pct:.4f}%\n")
-                    f.write("  After subtracting offset, angular signal ranges from 0% to "
-                           f"{max(pcts) - min_pct:.4f}%\n")
+                    f.write(
+                        "  After subtracting offset, angular signal ranges from 0% to "
+                        f"{max(pcts) - min_pct:.4f}%\n"
+                    )
 
                 # Large baseline shift (7 vs 0)
                 if angles_near_0:
@@ -1226,7 +1299,9 @@ class PPMRotationAnalyzer:
                     img_0 = self.images[base_0]
                     mae = float(np.mean(np.abs(img_0 - img_ref)))
                     pct = (mae / full_range) * 100
-                    f.write(f"    {base_7:.2f} -> {base_0:.2f} (delta={base_0 - base_7:.2f}): {pct:.4f}% change\n")
+                    f.write(
+                        f"    {base_7:.2f} -> {base_0:.2f} (delta={base_0 - base_7:.2f}): {pct:.4f}% change\n"
+                    )
 
                 f.write("\n")
 
@@ -1250,22 +1325,28 @@ class PPMRotationAnalyzer:
                     f.write(f"  PPM Base Angle: {ppm_base} deg (actual: {base_angle:.2f} deg)\n")
                     f.write("  " + "-" * 50 + "\n")
 
-                    f.write("  Angle Pair          |  Background  |  Mean Diff  |  Std Diff  |  Pixels > BG\n")
+                    f.write(
+                        "  Angle Pair          |  Background  |  Mean Diff  |  Std Diff  |  Pixels > BG\n"
+                    )
                     f.write("  " + "-" * 75 + "\n")
 
                     hue_results_found = False
                     for angle in sorted(angles_near_base):
                         if angle != base_angle:
                             hue_data = self.compute_birefringence_hue_shift(base_angle, angle)
-                            if hue_data and 'error' not in hue_data:
+                            if hue_data and "error" not in hue_data:
                                 hue_results_found = True
-                                f.write(f"  {base_angle:.2f} -> {angle:.2f}  |  "
-                                       f"{hue_data['background_mode']:10.1f}  |  "
-                                       f"{hue_data['mean_diff_above_bg']:9.2f}  |  "
-                                       f"{hue_data['std_diff_above_bg']:8.2f}  |  "
-                                       f"{hue_data['pct_pixels_above_bg']:6.1f}%\n")
-                            elif hue_data and 'error' in hue_data:
-                                f.write(f"  {base_angle:.2f} -> {angle:.2f}  |  ERROR: {hue_data['error']}\n")
+                                f.write(
+                                    f"  {base_angle:.2f} -> {angle:.2f}  |  "
+                                    f"{hue_data['background_mode']:10.1f}  |  "
+                                    f"{hue_data['mean_diff_above_bg']:9.2f}  |  "
+                                    f"{hue_data['std_diff_above_bg']:8.2f}  |  "
+                                    f"{hue_data['pct_pixels_above_bg']:6.1f}%\n"
+                                )
+                            elif hue_data and "error" in hue_data:
+                                f.write(
+                                    f"  {base_angle:.2f} -> {angle:.2f}  |  ERROR: {hue_data['error']}\n"
+                                )
 
                     if not hue_results_found:
                         f.write("  (No valid hue comparisons found)\n")
@@ -1278,16 +1359,16 @@ class PPMRotationAnalyzer:
                 angles_near_neg7 = [a for a in sorted_angles if abs(a - (-7.0)) <= 1.0]
                 if angles_near_neg7:
                     base_neg7 = min(angles_near_neg7, key=lambda x: abs(x - (-7.0)))
-                    f.write(f"  Cross-angle comparison (+7 vs -7 deg):\n")
+                    f.write("  Cross-angle comparison (+7 vs -7 deg):\n")
                     f.write("  " + "-" * 50 + "\n")
                     hue_data = self.compute_birefringence_hue_shift(base_pos7, base_neg7)
-                    if hue_data and 'error' not in hue_data:
+                    if hue_data and "error" not in hue_data:
                         f.write(f"    {base_pos7:.2f} deg vs {base_neg7:.2f} deg\n")
                         f.write(f"    Background mode: {hue_data['background_mode']:.1f}\n")
                         f.write(f"    Mean diff (above BG): {hue_data['mean_diff_above_bg']:.2f}\n")
                         f.write(f"    Std diff (above BG): {hue_data['std_diff_above_bg']:.2f}\n")
                         f.write(f"    Pixels above BG: {hue_data['pct_pixels_above_bg']:.1f}%\n")
-                    elif hue_data and 'error' in hue_data:
+                    elif hue_data and "error" in hue_data:
                         f.write(f"    ERROR: {hue_data['error']}\n")
                     f.write("\n")
 
@@ -1300,11 +1381,15 @@ class PPMRotationAnalyzer:
 
             if fine_sensitivity:
                 for base_angle, data in fine_sensitivity.items():
-                    sens = data['sensitivity_pct_per_deg']
-                    f.write(f"  - At {data['base_angle']:.0f} deg: {sens:.3f}% intensity change per degree\n")
+                    sens = data["sensitivity_pct_per_deg"]
+                    f.write(
+                        f"  - At {data['base_angle']:.0f} deg: {sens:.3f}% intensity change per degree\n"
+                    )
                     f.write(f"    -> 0.05 deg error causes ~{sens * 0.05:.4f}% intensity change\n")
                     f.write(f"    -> 0.10 deg error causes ~{sens * 0.10:.4f}% intensity change\n")
-                    f.write(f"    -> 1.00 deg error causes ~{sens * 1.00:.3f}% intensity change\n\n")
+                    f.write(
+                        f"    -> 1.00 deg error causes ~{sens * 1.00:.3f}% intensity change\n\n"
+                    )
 
             f.write("=" * 70 + "\n")
             f.write("END OF REPORT\n")
@@ -1315,16 +1400,27 @@ class PPMRotationAnalyzer:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Analyze PPM rotation sensitivity')
-    parser.add_argument('image_dir', help='Directory containing PPM images')
-    parser.add_argument('--output', '-o', help='Output directory for results')
-    parser.add_argument('--reference-angle', '-r', type=float, default=7.0,
-                       help='Reference angle for comparisons (default: 7.0)')
-    parser.add_argument('--deviations', '-d', nargs='+', type=float,
-                       default=[0.1, 0.2, 0.3, 0.5, 1.0],
-                       help='Angular deviations to test (default: 0.1 0.2 0.3 0.5 1.0)')
-    parser.add_argument('--skip-visualization', action='store_true',
-                       help='Skip visualization plots')
+    parser = argparse.ArgumentParser(description="Analyze PPM rotation sensitivity")
+    parser.add_argument("image_dir", help="Directory containing PPM images")
+    parser.add_argument("--output", "-o", help="Output directory for results")
+    parser.add_argument(
+        "--reference-angle",
+        "-r",
+        type=float,
+        default=7.0,
+        help="Reference angle for comparisons (default: 7.0)",
+    )
+    parser.add_argument(
+        "--deviations",
+        "-d",
+        nargs="+",
+        type=float,
+        default=[0.1, 0.2, 0.3, 0.5, 1.0],
+        help="Angular deviations to test (default: 0.1 0.2 0.3 0.5 1.0)",
+    )
+    parser.add_argument(
+        "--skip-visualization", action="store_true", help="Skip visualization plots"
+    )
 
     args = parser.parse_args()
 
@@ -1362,13 +1458,17 @@ def main():
     print("=" * 50)
 
     if not df_differences.empty:
-        print(f"\nImage Quality at Various Angular Differences:")
-        print(df_differences[['angular_difference', 'correlation', 'ssim', 'psnr']].to_string(index=False))
+        print("\nImage Quality at Various Angular Differences:")
+        print(
+            df_differences[["angular_difference", "correlation", "ssim", "psnr"]].to_string(
+                index=False
+            )
+        )
 
     if not df_birefringence.empty:
-        print(f"\nBirefringence Sensitivity (Mean Errors):")
-        summary = df_birefringence.groupby('deviation')[
-            ['mean_retardance_error', 'mean_orientation_error_deg']
+        print("\nBirefringence Sensitivity (Mean Errors):")
+        summary = df_birefringence.groupby("deviation")[
+            ["mean_retardance_error", "mean_orientation_error_deg"]
         ].mean()
         print(summary.to_string())
 

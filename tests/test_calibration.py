@@ -14,13 +14,12 @@ from ppm_library.calibration.histogram_correction import (
 )
 from ppm_library.calibration.radial import RadialCalibrationResult, RadialSample
 
-
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
 
-def _make_gaussian_peaks(n_peaks=16, n_bins=256, sigma=3.0, base_height=100.0,
-                         variation=0.3):
+
+def _make_gaussian_peaks(n_peaks=16, n_bins=256, sigma=3.0, base_height=100.0, variation=0.3):
     """Create a synthetic 256-bin histogram with *n_peaks* Gaussian peaks.
 
     Peak heights vary by +/- *variation* fraction so the correction curve
@@ -85,6 +84,7 @@ def simple_calibration(flat_correction_curve):
 # HistogramCalibration -- __post_init__ validation
 # ===========================================================================
 
+
 class TestHistogramCalibrationValidation:
     """Validation in __post_init__."""
 
@@ -139,6 +139,7 @@ class TestHistogramCalibrationValidation:
 # HistogramCalibration.from_circular_histogram
 # ===========================================================================
 
+
 class TestFromCircularHistogram:
     """Construction from a 256-bin circular-pattern histogram."""
 
@@ -176,6 +177,7 @@ class TestFromCircularHistogram:
 # HistogramCalibration.correct_histogram
 # ===========================================================================
 
+
 class TestCorrectHistogram:
     """Histogram correction: division, phase shift, background removal."""
 
@@ -184,14 +186,13 @@ class TestCorrectHistogram:
         # Curve that doubles the first half (curve=0.5 -> divide -> doubles)
         curve = np.ones(256, dtype=np.float64)
         curve[:128] = 0.5
-        cal = HistogramCalibration(
-            correction_curve=curve, phase_shift=0, phase_direction=1
-        )
+        cal = HistogramCalibration(correction_curve=curve, phase_shift=0, phase_direction=1)
 
         input_hist = np.ones(256, dtype=np.float64)
         input_hist[0] = 0  # avoid background removal noise
-        corrected = cal.correct_histogram(input_hist, apply_phase_shift=False,
-                                          remove_background=False)
+        corrected = cal.correct_histogram(
+            input_hist, apply_phase_shift=False, remove_background=False
+        )
 
         # Bins 0-127 were divided by 0.5 -> value 2; bins 128-255 -> value 1
         # After normalization, max should be 1.0
@@ -203,14 +204,13 @@ class TestCorrectHistogram:
     def test_phase_shift_rolls_histogram(self):
         """Phase shift moves peak to the right or left."""
         curve = np.ones(256, dtype=np.float64)
-        cal = HistogramCalibration(
-            correction_curve=curve, phase_shift=10, phase_direction=1
-        )
+        cal = HistogramCalibration(correction_curve=curve, phase_shift=10, phase_direction=1)
 
         input_hist = np.zeros(256, dtype=np.float64)
         input_hist[100] = 1.0  # single peak at bin 100
-        corrected = cal.correct_histogram(input_hist, apply_phase_shift=True,
-                                          remove_background=False)
+        corrected = cal.correct_histogram(
+            input_hist, apply_phase_shift=True, remove_background=False
+        )
 
         # Peak should have moved by +10 bins
         assert np.argmax(corrected) == 110
@@ -218,14 +218,13 @@ class TestCorrectHistogram:
     def test_phase_shift_negative_direction(self):
         """phase_direction=-1 shifts in the opposite direction."""
         curve = np.ones(256, dtype=np.float64)
-        cal = HistogramCalibration(
-            correction_curve=curve, phase_shift=10, phase_direction=-1
-        )
+        cal = HistogramCalibration(correction_curve=curve, phase_shift=10, phase_direction=-1)
 
         input_hist = np.zeros(256, dtype=np.float64)
         input_hist[100] = 1.0
-        corrected = cal.correct_histogram(input_hist, apply_phase_shift=True,
-                                          remove_background=False)
+        corrected = cal.correct_histogram(
+            input_hist, apply_phase_shift=True, remove_background=False
+        )
 
         assert np.argmax(corrected) == 90
 
@@ -260,6 +259,7 @@ class TestCorrectHistogram:
 # HistogramCalibration.correct_hue_image
 # ===========================================================================
 
+
 class TestCorrectHueImage:
     """Pixel-wise hue image correction."""
 
@@ -289,6 +289,7 @@ class TestCorrectHueImage:
 # ===========================================================================
 # HistogramCalibration save / load round-trip
 # ===========================================================================
+
 
 class TestHistogramCalibrationSaveLoad:
     """NPZ round-trip for HistogramCalibration."""
@@ -330,6 +331,7 @@ class TestHistogramCalibrationSaveLoad:
 # compute_hue_histogram
 # ===========================================================================
 
+
 class TestComputeHueHistogram:
     """Tests for the standalone compute_hue_histogram function."""
 
@@ -362,9 +364,9 @@ class TestComputeHueHistogram:
 
         peak_bin = np.argmax(hist)
         expected_bin = int(target_hue * 255)
-        assert abs(peak_bin - expected_bin) <= 3, (
-            f"Peak at bin {peak_bin}, expected near {expected_bin}"
-        )
+        assert (
+            abs(peak_bin - expected_bin) <= 3
+        ), f"Peak at bin {peak_bin}, expected near {expected_bin}"
 
     def test_saturation_threshold_excludes_gray(self):
         """Pixels below saturation threshold are excluded."""
@@ -411,6 +413,7 @@ class TestComputeHueHistogram:
 # RadialCalibrationResult -- construction
 # ===========================================================================
 
+
 class TestRadialCalibrationResultConstruction:
     """Basic construction and attribute access."""
 
@@ -430,6 +433,7 @@ class TestRadialCalibrationResultConstruction:
 # RadialCalibrationResult.hue_to_angle
 # ===========================================================================
 
+
 class TestHueToAngle:
     """Linear hue-to-angle conversion."""
 
@@ -438,7 +442,9 @@ class TestHueToAngle:
         # inv_slope=180, inv_intercept=0, hue_offset=0
         # angle = 180 * hue + 0
         result = _make_simple_radial_result(
-            inv_slope=180.0, inv_intercept=0.0, hue_offset=0.0,
+            inv_slope=180.0,
+            inv_intercept=0.0,
+            hue_offset=0.0,
         )
         angle = result.hue_to_angle(0.5)
         assert float(angle) == pytest.approx(90.0, abs=0.01)
@@ -446,7 +452,9 @@ class TestHueToAngle:
     def test_hue_zero_gives_intercept(self):
         """hue=0 (after offset) should return inv_intercept mod 180."""
         result = _make_simple_radial_result(
-            inv_slope=180.0, inv_intercept=10.0, hue_offset=0.0,
+            inv_slope=180.0,
+            inv_intercept=10.0,
+            hue_offset=0.0,
         )
         angle = result.hue_to_angle(0.0)
         assert float(angle) == pytest.approx(10.0, abs=0.01)
@@ -454,7 +462,9 @@ class TestHueToAngle:
     def test_handles_array_input(self):
         """hue_to_angle accepts and returns numpy arrays."""
         result = _make_simple_radial_result(
-            inv_slope=180.0, inv_intercept=0.0, hue_offset=0.0,
+            inv_slope=180.0,
+            inv_intercept=0.0,
+            hue_offset=0.0,
         )
         hues = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
         angles = result.hue_to_angle(hues)
@@ -464,7 +474,9 @@ class TestHueToAngle:
     def test_array_values_correct(self):
         """Array conversion matches element-wise scalar conversion."""
         result = _make_simple_radial_result(
-            inv_slope=180.0, inv_intercept=0.0, hue_offset=0.0,
+            inv_slope=180.0,
+            inv_intercept=0.0,
+            hue_offset=0.0,
         )
         hues = np.array([0.0, 0.25, 0.5])
         angles = result.hue_to_angle(hues)
@@ -473,7 +485,9 @@ class TestHueToAngle:
     def test_hue_offset_applied(self):
         """Non-zero hue_offset shifts the mapping."""
         result = _make_simple_radial_result(
-            inv_slope=180.0, inv_intercept=0.0, hue_offset=0.1,
+            inv_slope=180.0,
+            inv_intercept=0.0,
+            hue_offset=0.1,
         )
         # hue_shifted = (0.6 - 0.1) % 1.0 = 0.5
         angle = result.hue_to_angle(0.6)
@@ -482,7 +496,9 @@ class TestHueToAngle:
     def test_output_wraps_to_0_180(self):
         """Angles are modded to [0, 180)."""
         result = _make_simple_radial_result(
-            inv_slope=360.0, inv_intercept=0.0, hue_offset=0.0,
+            inv_slope=360.0,
+            inv_intercept=0.0,
+            hue_offset=0.0,
         )
         # angle = 360 * 0.75 = 270 -> mod 180 = 90
         angle = result.hue_to_angle(0.75)
@@ -493,14 +509,17 @@ class TestHueToAngle:
 # RadialCalibrationResult.angle_to_hue
 # ===========================================================================
 
+
 class TestAngleToHue:
     """Inverse mapping: angle -> hue."""
 
     def test_inverse_of_hue_to_angle(self):
         """angle_to_hue is the inverse of hue_to_angle (within domain)."""
         result = _make_simple_radial_result(
-            slope=1.0 / 180.0, intercept=0.0,
-            inv_slope=180.0, inv_intercept=0.0,
+            slope=1.0 / 180.0,
+            intercept=0.0,
+            inv_slope=180.0,
+            inv_intercept=0.0,
             hue_offset=0.0,
         )
         original_hue = 0.3
@@ -513,14 +532,17 @@ class TestAngleToHue:
 # RadialCalibrationResult save / load round-trip
 # ===========================================================================
 
+
 class TestRadialCalibrationSaveLoad:
     """NPZ round-trip for RadialCalibrationResult."""
 
     def test_roundtrip_preserves_slope_intercept(self, tmp_path):
         """slope, intercept, inv_slope, inv_intercept survive save/load."""
         result = _make_simple_radial_result(
-            slope=0.005, intercept=0.1,
-            inv_slope=200.0, inv_intercept=-20.0,
+            slope=0.005,
+            intercept=0.1,
+            inv_slope=200.0,
+            inv_intercept=-20.0,
         )
         path = tmp_path / "radial_cal.npz"
         result.save(path)
@@ -571,13 +593,16 @@ class TestRadialCalibrationSaveLoad:
 # RadialCalibrationResult.check_quality
 # ===========================================================================
 
+
 class TestCheckQuality:
     """Quality-check warnings."""
 
     def test_no_warnings_for_good_calibration(self):
         """Good calibration produces no warnings."""
-        samples = [RadialSample(angle=float(i * 10), hue_mean=0.1, hue_std=0.01,
-                                n_samples=50) for i in range(18)]
+        samples = [
+            RadialSample(angle=float(i * 10), hue_mean=0.1, hue_std=0.01, n_samples=50)
+            for i in range(18)
+        ]
         result = _make_simple_radial_result(r_squared=0.99, samples=samples)
         warnings = result.check_quality(expected_spokes=18, min_r_squared=0.95)
         assert warnings == []
@@ -590,8 +615,7 @@ class TestCheckQuality:
 
     def test_missing_spokes_triggers_warning(self):
         """Fewer samples than expected_spokes produces a warning."""
-        samples = [RadialSample(angle=0.0, hue_mean=0.1, hue_std=0.01,
-                                n_samples=50)]
+        samples = [RadialSample(angle=0.0, hue_mean=0.1, hue_std=0.01, n_samples=50)]
         result = _make_simple_radial_result(r_squared=0.99, samples=samples)
         warnings = result.check_quality(expected_spokes=18, min_r_squared=0.95)
         assert any("spokes" in w.lower() for w in warnings)

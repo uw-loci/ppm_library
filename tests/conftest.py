@@ -28,20 +28,20 @@ def synthetic_bayer_rggb():
     # Create blocks of uniform color for easy validation
     # Top-left quadrant: Red region
     bayer[0:256:2, 0:256:2] = 200  # R positions
-    bayer[0:256:2, 1:256:2] = 50   # G positions
-    bayer[1:256:2, 0:256:2] = 50   # G positions
-    bayer[1:256:2, 1:256:2] = 50   # B positions
+    bayer[0:256:2, 1:256:2] = 50  # G positions
+    bayer[1:256:2, 0:256:2] = 50  # G positions
+    bayer[1:256:2, 1:256:2] = 50  # B positions
 
     # Top-right quadrant: Green region
-    bayer[0:256:2, 256:512:2] = 50   # R positions
+    bayer[0:256:2, 256:512:2] = 50  # R positions
     bayer[0:256:2, 257:512:2] = 200  # G positions
     bayer[1:256:2, 256:512:2] = 200  # G positions
-    bayer[1:256:2, 257:512:2] = 50   # B positions
+    bayer[1:256:2, 257:512:2] = 50  # B positions
 
     # Bottom-left quadrant: Blue region
-    bayer[256:512:2, 0:256:2] = 50   # R positions
-    bayer[256:512:2, 1:256:2] = 50   # G positions
-    bayer[257:512:2, 0:256:2] = 50   # G positions
+    bayer[256:512:2, 0:256:2] = 50  # R positions
+    bayer[256:512:2, 1:256:2] = 50  # G positions
+    bayer[257:512:2, 0:256:2] = 50  # G positions
     bayer[257:512:2, 1:256:2] = 200  # B positions
 
     # Bottom-right quadrant: White region (all channels high)
@@ -62,10 +62,10 @@ def expected_rgb_from_bayer_rggb():
         dict: Dictionary with expected RGB values for each quadrant
     """
     return {
-        'top_left': {'R': 200, 'G': 50, 'B': 50},      # Red quadrant
-        'top_right': {'R': 50, 'G': 200, 'B': 50},     # Green quadrant
-        'bottom_left': {'R': 50, 'G': 50, 'B': 200},   # Blue quadrant
-        'bottom_right': {'R': 200, 'G': 200, 'B': 200} # White quadrant
+        "top_left": {"R": 200, "G": 50, "B": 50},  # Red quadrant
+        "top_right": {"R": 50, "G": 200, "B": 50},  # Green quadrant
+        "bottom_left": {"R": 50, "G": 50, "B": 200},  # Blue quadrant
+        "bottom_right": {"R": 200, "G": 200, "B": 200},  # White quadrant
     }
 
 
@@ -87,9 +87,9 @@ def synthetic_raw_image():
     center_y, center_x = size // 2, size // 2
 
     # Gaussian-like falloff from center
-    distance = np.sqrt((x - center_x)**2 + (y - center_y)**2)
-    max_distance = np.sqrt(2 * (size / 2)**2)
-    vignette_factor = 1.0 - 0.3 * (distance / max_distance)**2
+    distance = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+    max_distance = np.sqrt(2 * (size / 2) ** 2)
+    vignette_factor = 1.0 - 0.3 * (distance / max_distance) ** 2
 
     # Apply vignetting
     image = (tissue * vignette_factor).astype(np.uint16)
@@ -115,9 +115,9 @@ def synthetic_background_image():
     # Same vignetting pattern as raw image
     y, x = np.ogrid[:size, :size]
     center_y, center_x = size // 2, size // 2
-    distance = np.sqrt((x - center_x)**2 + (y - center_y)**2)
-    max_distance = np.sqrt(2 * (size / 2)**2)
-    vignette_factor = 1.0 - 0.3 * (distance / max_distance)**2
+    distance = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+    max_distance = np.sqrt(2 * (size / 2) ** 2)
+    vignette_factor = 1.0 - 0.3 * (distance / max_distance) ** 2
 
     background = (background * vignette_factor).astype(np.uint16)
 
@@ -193,9 +193,9 @@ def sample_background_config():
         dict: Background correction settings
     """
     return {
-        'background': {
-            'method': 'divide',  # or 'subtract'
-            'scaling_factor': 1.0,
-            'epsilon': 1.0  # Prevents division by zero
+        "background": {
+            "method": "divide",  # or 'subtract'
+            "scaling_factor": 1.0,
+            "epsilon": 1.0,  # Prevents division by zero
         }
     }

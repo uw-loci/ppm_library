@@ -236,7 +236,7 @@ class BackgroundCorrectionUtils:
             else:
                 if logger:
                     logger.warning(f"  [FAIL] Background not found for {angle} deg")
-                    logger.warning(f"    Searched paths:")
+                    logger.warning("    Searched paths:")
                     for path in attempted_paths:
                         logger.warning(f"      - {path}")
 

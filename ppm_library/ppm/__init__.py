@@ -23,18 +23,21 @@ __all__ = ["PolarizerCalibrationUtils"]
 # Optional imports for PPM testing tools (may have additional dependencies)
 try:
     from ppm_library.ppm.sensitivity_test import PPMRotationSensitivityTester
+
     __all__.append("PPMRotationSensitivityTester")
 except ImportError:
     pass
 
 try:
     from ppm_library.ppm.sensitivity_analysis import PPMRotationAnalyzer
+
     __all__.append("PPMRotationAnalyzer")
 except ImportError:
     pass
 
 try:
     from ppm_library.ppm.birefringence_test import PPMBirefringenceMaximizationTester
+
     __all__.append("PPMBirefringenceMaximizationTester")
 except ImportError:
     pass

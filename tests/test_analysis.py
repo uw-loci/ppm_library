@@ -10,12 +10,12 @@ All test data is synthetic numpy arrays -- no calibration files needed.
 
 import numpy as np
 import pytest
-from unittest.mock import patch, MagicMock
-
+from unittest.mock import patch
 
 # ---------------------------------------------------------------------------
 # Mock calibration
 # ---------------------------------------------------------------------------
+
 
 class MockCalibration:
     """Mock calibration that maps hue linearly to angle.
@@ -46,6 +46,7 @@ def _patch_load_calibration(mock_calibration):
 # ---------------------------------------------------------------------------
 # Helpers for building synthetic RGB images
 # ---------------------------------------------------------------------------
+
 
 def _make_saturated_rgb(h, s, v, shape=(16, 16)):
     """Build an RGB uint8 image where every pixel has the given HSV.
@@ -78,10 +79,10 @@ from ppm_library.analysis.region_analysis import (
     analyze_region,
 )
 
-
 # -------------------------------------------------------------------
 # compute_angles_from_rgb
 # -------------------------------------------------------------------
+
 
 class TestComputeAnglesFromRgb:
 
@@ -89,7 +90,16 @@ class TestComputeAnglesFromRgb:
     def test_returns_expected_keys(self, mock_calibration):
         rgb = _make_saturated_rgb(0.5, 0.8, 0.8)
         result = compute_angles_from_rgb(rgb, mock_calibration)
-        expected_keys = {"angles", "valid_mask", "hue", "saturation", "value", "n_valid", "n_clipped", "n_dark_excluded"}
+        expected_keys = {
+            "angles",
+            "valid_mask",
+            "hue",
+            "saturation",
+            "value",
+            "n_valid",
+            "n_clipped",
+            "n_dark_excluded",
+        }
         assert set(result.keys()) == expected_keys
 
     @pytest.mark.usefixtures("_patch_load_calibration")
@@ -128,6 +138,7 @@ class TestComputeAnglesFromRgb:
 # compute_ppm_positive_mask
 # -------------------------------------------------------------------
 
+
 class TestComputePpmPositiveMask:
 
     def test_2d_array_thresholding(self):
@@ -138,10 +149,13 @@ class TestComputePpmPositiveMask:
 
     def test_3d_array_uses_max_across_channels(self):
         # Channel max: [200, 150]  [50, 250]
-        arr = np.array([
-            [[100, 200, 50], [150, 100, 80]],
-            [[50, 30, 20], [250, 200, 100]],
-        ], dtype=np.uint16)
+        arr = np.array(
+            [
+                [[100, 200, 50], [150, 100, 80]],
+                [[50, 30, 20], [250, 200, 100]],
+            ],
+            dtype=np.uint16,
+        )
         mask = compute_ppm_positive_mask(arr, threshold=160)
         expected = np.array([[True, False], [False, True]])
         np.testing.assert_array_equal(mask, expected)
@@ -155,6 +169,7 @@ class TestComputePpmPositiveMask:
 # -------------------------------------------------------------------
 # compute_masked_angles
 # -------------------------------------------------------------------
+
 
 class TestComputeMaskedAngles:
 
@@ -183,6 +198,7 @@ class TestComputeMaskedAngles:
 # -------------------------------------------------------------------
 # compute_angle_histogram
 # -------------------------------------------------------------------
+
 
 class TestComputeAngleHistogram:
 
@@ -217,6 +233,7 @@ class TestComputeAngleHistogram:
 # -------------------------------------------------------------------
 # compute_circular_statistics
 # -------------------------------------------------------------------
+
 
 class TestComputeCircularStatistics:
 
@@ -266,6 +283,7 @@ class TestComputeCircularStatistics:
 # filter_angles_by_range
 # -------------------------------------------------------------------
 
+
 class TestFilterAnglesByRange:
 
     def test_normal_range(self):
@@ -296,6 +314,7 @@ class TestFilterAnglesByRange:
 # -------------------------------------------------------------------
 # analyze_region
 # -------------------------------------------------------------------
+
 
 class TestAnalyzeRegion:
 
@@ -342,13 +361,14 @@ from ppm_library.analysis.surface_analysis import (
 def _make_square_mask(size=50, margin=10):
     """Create a mask with a filled square in the center."""
     mask = np.zeros((size, size), dtype=bool)
-    mask[margin:size - margin, margin:size - margin] = True
+    mask[margin : size - margin, margin : size - margin] = True
     return mask
 
 
 # -------------------------------------------------------------------
 # compute_boundary_contour
 # -------------------------------------------------------------------
+
 
 class TestComputeBoundaryContour:
 
@@ -381,6 +401,7 @@ class TestComputeBoundaryContour:
 # compute_contour_normals
 # -------------------------------------------------------------------
 
+
 class TestComputeContourNormals:
 
     def test_normals_are_unit_vectors(self):
@@ -406,6 +427,7 @@ class TestComputeContourNormals:
 # -------------------------------------------------------------------
 # compute_border_zone_mask
 # -------------------------------------------------------------------
+
 
 class TestComputeBorderZoneMask:
 
@@ -460,6 +482,7 @@ class TestComputeBorderZoneMask:
 # compute_simple_perpendicularity
 # -------------------------------------------------------------------
 
+
 class TestComputeSimplePerpendicularity:
 
     def _setup_perpendicularity_inputs(self):
@@ -502,6 +525,7 @@ class TestComputeSimplePerpendicularity:
 # _compute_3way_split
 # -------------------------------------------------------------------
 
+
 class TestCompute3waySplit:
 
     def test_all_parallel(self):
@@ -541,6 +565,7 @@ class TestCompute3waySplit:
 # -------------------------------------------------------------------
 # _count_clusters
 # -------------------------------------------------------------------
+
 
 class TestCountClusters:
 

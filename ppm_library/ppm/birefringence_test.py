@@ -22,8 +22,6 @@ Usage:
     python ppm_birefringence_maximization_test.py config.yml --mode calibrate
 """
 
-import sys
-import os
 import time
 import json
 import numpy as np
@@ -35,12 +33,12 @@ import cv2
 
 # Import from modular packages
 from microscope_command_server.client import QuPathTestClient
-from microscope_command_server.server.protocol import ExtendedCommand, TCP_PORT
 from microscope_control.config import ConfigManager
 
 # Import matplotlib for visualization (optional)
 try:
     import matplotlib.pyplot as plt
+
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
@@ -96,20 +94,22 @@ class PPMBirefringenceMaximizationTester:
         else:
             return gray.astype(img.dtype)
 
-    def __init__(self,
-                 config_yaml: str,
-                 output_dir: str = None,
-                 host: str = "127.0.0.1",
-                 port: int = 5000,
-                 angle_range: Tuple[float, float] = (-10.0, 10.0),
-                 angle_step: float = 0.1,
-                 exposure_mode: str = "interpolate",
-                 fixed_exposure_ms: float = None,
-                 keep_images: bool = True,
-                 calibration_exposures: Dict[float, float] = None,
-                 target_intensity: int = 128,
-                 progress_callback: Optional[Callable[[int, int], None]] = None,
-                 stage_move_callback: Optional[Callable[[], bool]] = None):
+    def __init__(
+        self,
+        config_yaml: str,
+        output_dir: str = None,
+        host: str = "127.0.0.1",
+        port: int = 5000,
+        angle_range: Tuple[float, float] = (-10.0, 10.0),
+        angle_step: float = 0.1,
+        exposure_mode: str = "interpolate",
+        fixed_exposure_ms: float = None,
+        keep_images: bool = True,
+        calibration_exposures: Dict[float, float] = None,
+        target_intensity: int = 128,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        stage_move_callback: Optional[Callable[[], bool]] = None,
+    ):
         """
         Initialize the birefringence maximization tester.
 
@@ -206,7 +206,9 @@ class PPMBirefringenceMaximizationTester:
             # Fall back to first objective if no POL found
             if not self.objective_in_use and objectives:
                 first_obj = objectives[0]
-                self.objective_in_use = first_obj.get("id") if isinstance(first_obj, dict) else str(first_obj)
+                self.objective_in_use = (
+                    first_obj.get("id") if isinstance(first_obj, dict) else str(first_obj)
+                )
 
         if not self.detector_in_use:
             detectors = hardware_config.get("detectors", [])
@@ -219,7 +221,9 @@ class PPMBirefringenceMaximizationTester:
             # Fall back to first detector if no JAI found
             if not self.detector_in_use and detectors:
                 first_det = detectors[0]
-                self.detector_in_use = first_det if isinstance(first_det, str) else first_det.get("id")
+                self.detector_in_use = (
+                    first_det if isinstance(first_det, str) else first_det.get("id")
+                )
 
         # Initialize client
         self.client = QuPathTestClient(host=host, port=port)
@@ -258,7 +262,9 @@ class PPMBirefringenceMaximizationTester:
         if exposure_mode == "calibrate":
             self.logger.info(f"  Target intensity: {target_intensity} (0-255 scale)")
         if exposure_mode == "noise_aware":
-            self.logger.info("  Quality presets: 'quality' at 0 deg, 'fast' at 90 deg, 'balanced' at +/-7 deg")
+            self.logger.info(
+                "  Quality presets: 'quality' at 0 deg, 'fast' at 90 deg, 'balanced' at +/-7 deg"
+            )
         self.logger.info(f"  Objective: {self.objective_in_use}")
         self.logger.info(f"  Detector: {self.detector_in_use}")
         self.logger.info(f"  Output: {self.output_dir}")
@@ -299,7 +305,7 @@ class PPMBirefringenceMaximizationTester:
         ch = logging.StreamHandler()
         ch.setLevel(logging.INFO)
 
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
 
@@ -345,14 +351,14 @@ class PPMBirefringenceMaximizationTester:
 
         # Crossed polarizers (0 deg) - darkest, most noise-sensitive
         if abs_angle < 2.0:
-            return 'quality'
+            return "quality"
 
         # Uncrossed/parallel (near 90 deg) - brightest, noise less critical
         if abs_angle > 80.0:
-            return 'fast'
+            return "fast"
 
         # Birefringence angles (around +/-7 deg) - moderate light, balanced
-        return 'balanced'
+        return "balanced"
 
     def get_exposure_for_angle(self, angle: float) -> float:
         """
@@ -369,7 +375,6 @@ class PPMBirefringenceMaximizationTester:
         Returns:
             Exposure time in milliseconds
         """
-        import math
 
         # FIXED mode: same exposure for all angles
         if self.exposure_mode == "fixed" and self.fixed_exposure_ms is not None:
@@ -382,9 +387,9 @@ class PPMBirefringenceMaximizationTester:
             # Higher quality = willing to use longer exposures
             # These values are based on noise characterization data
             quality_exposure_limits = {
-                'quality': 500.0,   # Willing to use longer exposures for best quality
-                'balanced': 200.0,  # Moderate exposure limit
-                'fast': 50.0,       # Short exposures, higher gain acceptable
+                "quality": 500.0,  # Willing to use longer exposures for best quality
+                "balanced": 200.0,  # Moderate exposure limit
+                "fast": 50.0,  # Short exposures, higher gain acceptable
             }
             max_exp = quality_exposure_limits.get(quality_mode, 200.0)
 
@@ -397,7 +402,7 @@ class PPMBirefringenceMaximizationTester:
             cal_exp = self.calibrated_exposures[angle]
             # New format: dict with r, g, b keys - return G as the reference
             if isinstance(cal_exp, dict):
-                return cal_exp.get('g', cal_exp.get('r', 50.0))
+                return cal_exp.get("g", cal_exp.get("r", 50.0))
             return cal_exp
 
         # Check exact match in calibration table
@@ -427,9 +432,9 @@ class PPMBirefringenceMaximizationTester:
         abs_angle = abs(angle)
 
         # Get reference exposures
-        exp_0 = exp.get(0.0, 96.81)    # Crossed polars - darkest, needs longest exposure
-        exp_7 = exp.get(7.0, 22.63)    # Near optimal - intermediate
-        exp_90 = exp.get(90.0, 0.57)   # Parallel polars - brightest, shortest exposure
+        exp_0 = exp.get(0.0, 96.81)  # Crossed polars - darkest, needs longest exposure
+        exp_7 = exp.get(7.0, 22.63)  # Near optimal - intermediate
+        exp_90 = exp.get(90.0, 0.57)  # Parallel polars - brightest, shortest exposure
 
         # Use piecewise log-linear interpolation for smooth transitions
         if abs_angle <= 7:
@@ -444,8 +449,9 @@ class PPMBirefringenceMaximizationTester:
             log_exp = math.log(exp_7) * (1 - t) + math.log(exp_90) * t
             return math.exp(log_exp)
 
-    def acquire_at_angle(self, angle: float, save_name: str,
-                        exposure_ms: float = None) -> Optional[Path]:
+    def acquire_at_angle(
+        self, angle: float, save_name: str, exposure_ms: float = None
+    ) -> Optional[Path]:
         """
         Acquire a single image at specified angle using SNAP command.
 
@@ -465,7 +471,7 @@ class PPMBirefringenceMaximizationTester:
         per_channel_cal = None
         if angle in self.calibrated_exposures:
             cal_exp = self.calibrated_exposures[angle]
-            if isinstance(cal_exp, dict) and 'r' in cal_exp:
+            if isinstance(cal_exp, dict) and "r" in cal_exp:
                 per_channel_cal = cal_exp
 
         if exposure_ms is None and per_channel_cal is None:
@@ -481,7 +487,9 @@ class PPMBirefringenceMaximizationTester:
             actual_angle = self.client.test_get_rotation()
             angle_error = abs(actual_angle - angle)
             if angle_error > 0.5:
-                self.logger.warning(f"Large angle error: set={angle:.2f}, actual={actual_angle:.2f}")
+                self.logger.warning(
+                    f"Large angle error: set={angle:.2f}, actual={actual_angle:.2f}"
+                )
 
             # Acquire image
             output_path = self.output_dir / save_name
@@ -490,12 +498,12 @@ class PPMBirefringenceMaximizationTester:
                 # Use calibrated per-channel exposures (from calibrate mode)
                 result = self.client.test_snap(
                     angle=angle,
-                    exposure_ms=per_channel_cal['g'],  # G as reference
+                    exposure_ms=per_channel_cal["g"],  # G as reference
                     output_path=str(output_path),
                     white_balance=False,
-                    exp_r=per_channel_cal['r'],
-                    exp_g=per_channel_cal['g'],
-                    exp_b=per_channel_cal['b'],
+                    exp_r=per_channel_cal["r"],
+                    exp_g=per_channel_cal["g"],
+                    exp_b=per_channel_cal["b"],
                 )
             else:
                 # Use WB calibration from YAML (interpolate mode)
@@ -514,7 +522,9 @@ class PPMBirefringenceMaximizationTester:
             if result:
                 # Use the path returned by the server (in case it differs)
                 actual_path = Path(result) if result else output_path
-                self.logger.debug(f"Acquired: {actual_path.name} (exp={exposure_ms:.2f}ms, WB=True)")
+                self.logger.debug(
+                    f"Acquired: {actual_path.name} (exp={exposure_ms:.2f}ms, WB=True)"
+                )
                 return actual_path
             else:
                 self.logger.error(f"SNAP failed for {save_name}")
@@ -561,13 +571,15 @@ class PPMBirefringenceMaximizationTester:
         self.logger.info(f"Target intensity: {self.target_intensity} (0-255 scale)")
 
         # Adaptive exposure parameters
-        tolerance = 0.05        # 5% tolerance (target +/- 5%)
-        max_iterations = 12     # Max iterations per angle (more for per-channel convergence)
-        min_exposure = 0.5      # Minimum exposure (ms)
-        max_exposure = 500.0    # Maximum exposure (ms)
+        tolerance = 0.05  # 5% tolerance (target +/- 5%)
+        max_iterations = 12  # Max iterations per angle (more for per-channel convergence)
+        min_exposure = 0.5  # Minimum exposure (ms)
+        max_exposure = 500.0  # Maximum exposure (ms)
 
         for i, angle in enumerate(all_angles):
-            self.logger.info(f"[{i+1}/{len(all_angles)}] Calibrating {angle:+.2f} deg (per-channel WB)...")
+            self.logger.info(
+                f"[{i+1}/{len(all_angles)}] Calibrating {angle:+.2f} deg (per-channel WB)..."
+            )
 
             # Move to angle first
             self.client.test_move_rotation(angle)
@@ -579,7 +591,7 @@ class PPMBirefringenceMaximizationTester:
             exp_g = base_exp
             exp_b = base_exp
 
-            final_exposures = {'r': exp_r, 'g': exp_g, 'b': exp_b}
+            final_exposures = {"r": exp_r, "g": exp_g, "b": exp_b}
             final_intensity = 0
 
             for iteration in range(max_iterations):
@@ -638,13 +650,17 @@ class PPMBirefringenceMaximizationTester:
                 g_error = abs(median_g - self.target_intensity) / self.target_intensity
                 b_error = abs(median_b - self.target_intensity) / self.target_intensity
 
-                if (r_error <= tolerance and g_error <= tolerance and
-                    b_error <= tolerance and saturated_fraction < 0.01):
+                if (
+                    r_error <= tolerance
+                    and g_error <= tolerance
+                    and b_error <= tolerance
+                    and saturated_fraction < 0.01
+                ):
                     self.logger.info(
                         f"  Converged: R={exp_r:.1f}ms, G={exp_g:.1f}ms, B={exp_b:.1f}ms "
                         f"(intensities: R={median_r:.1f}, G={median_g:.1f}, B={median_b:.1f})"
                     )
-                    final_exposures = {'r': exp_r, 'g': exp_g, 'b': exp_b}
+                    final_exposures = {"r": exp_r, "g": exp_g, "b": exp_b}
                     final_intensity = median_intensity
                     break
 
@@ -662,13 +678,13 @@ class PPMBirefringenceMaximizationTester:
                     exp_r *= 0.5
                     exp_g *= 0.5
                     exp_b *= 0.5
-                    self.logger.debug(f"  Reducing all exposures due to saturation")
+                    self.logger.debug("  Reducing all exposures due to saturation")
                 else:
                     exp_r = adjust_exposure(exp_r, median_r, self.target_intensity)
                     exp_g = adjust_exposure(exp_g, median_g, self.target_intensity)
                     exp_b = adjust_exposure(exp_b, median_b, self.target_intensity)
 
-                final_exposures = {'r': exp_r, 'g': exp_g, 'b': exp_b}
+                final_exposures = {"r": exp_r, "g": exp_g, "b": exp_b}
                 final_intensity = median_intensity
 
             # Save final calibrated exposures (store all three channels)
@@ -709,21 +725,23 @@ class PPMBirefringenceMaximizationTester:
 
         # Save calibration data
         cal_file = self.output_dir / "calibrated_exposures.json"
-        with open(cal_file, 'w') as f:
+        with open(cal_file, "w") as f:
             json.dump({str(k): v for k, v in sorted(calibrated.items())}, f, indent=2)
         self.logger.info(f"Saved calibration data to {cal_file}")
 
         # Log summary statistics (handle per-channel format)
-        self.logger.info(f"\nCalibration summary (per-channel WB):")
+        self.logger.info("\nCalibration summary (per-channel WB):")
         if calibrated:
             # Extract G channel exposures for summary (or compute means)
             g_exposures = []
             for exp_data in calibrated.values():
                 if isinstance(exp_data, dict):
-                    g_exposures.append(exp_data.get('g', 50.0))
+                    g_exposures.append(exp_data.get("g", 50.0))
                 else:
                     g_exposures.append(exp_data)
-            self.logger.info(f"  G-channel exposure range: {min(g_exposures):.2f} - {max(g_exposures):.2f} ms")
+            self.logger.info(
+                f"  G-channel exposure range: {min(g_exposures):.2f} - {max(g_exposures):.2f} ms"
+            )
             self.logger.info(f"  G-channel mean exposure: {np.mean(g_exposures):.2f} ms")
 
         return calibrated
@@ -857,12 +875,14 @@ class PPMBirefringenceMaximizationTester:
                     f"diff={rel_diff:.1%} > {tolerance:.1%} tolerance"
                 )
                 # Track this mismatch
-                self.intensity_mismatches.append({
-                    'angle': angle,
-                    'pos_intensity': pos_intensity,
-                    'neg_intensity': neg_intensity,
-                    'rel_diff': rel_diff,
-                })
+                self.intensity_mismatches.append(
+                    {
+                        "angle": angle,
+                        "pos_intensity": pos_intensity,
+                        "neg_intensity": neg_intensity,
+                        "rel_diff": rel_diff,
+                    }
+                )
             else:
                 self.logger.debug(
                     f"Intensity match OK at +/-{angle:.2f} deg: "
@@ -914,8 +934,9 @@ class PPMBirefringenceMaximizationTester:
             self.logger.error(f"Error checking saturation: {e}")
             return 0.0, 0.0
 
-    def compute_difference_image(self, pos_path: Path, neg_path: Path,
-                                 angle: float) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
+    def compute_difference_image(
+        self, pos_path: Path, neg_path: Path, angle: float
+    ) -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
         """
         Compute difference, sum, and normalized difference images from paired images.
 
@@ -938,8 +959,12 @@ class PPMBirefringenceMaximizationTester:
         try:
             # Verify files exist before trying to read
             # (there may be a delay between tifffile.imwrite and file visibility)
-            pos_exists = pos_path.exists() if isinstance(pos_path, Path) else Path(pos_path).exists()
-            neg_exists = neg_path.exists() if isinstance(neg_path, Path) else Path(neg_path).exists()
+            pos_exists = (
+                pos_path.exists() if isinstance(pos_path, Path) else Path(pos_path).exists()
+            )
+            neg_exists = (
+                neg_path.exists() if isinstance(neg_path, Path) else Path(neg_path).exists()
+            )
 
             if not pos_exists or not neg_exists:
                 self.logger.error(f"Image files not found for angle {angle}:")
@@ -952,18 +977,24 @@ class PPMBirefringenceMaximizationTester:
             neg_img = cv2.imread(str(neg_path), cv2.IMREAD_UNCHANGED)
 
             if pos_img is None or neg_img is None:
-                self.logger.error(f"Could not load images for angle {angle} (cv2.imread returned None)")
+                self.logger.error(
+                    f"Could not load images for angle {angle} (cv2.imread returned None)"
+                )
                 self.logger.error(f"  pos_path: {pos_path} (loaded={pos_img is not None})")
                 self.logger.error(f"  neg_path: {neg_path} (loaded={neg_img is not None})")
                 return None, None, None
 
             # Log image properties for diagnostic purposes
             if angle == 0.0:  # Only log once to avoid spam
-                self.logger.info(f"  Image dtype: {pos_img.dtype}, shape: {pos_img.shape}, "
-                               f"range: [{pos_img.min()}, {pos_img.max()}]")
+                self.logger.info(
+                    f"  Image dtype: {pos_img.dtype}, shape: {pos_img.shape}, "
+                    f"range: [{pos_img.min()}, {pos_img.max()}]"
+                )
                 if pos_img.dtype == np.uint8:
-                    self.logger.warning("  WARNING: Images are 8-bit. For best results, "
-                                       "configure camera for 16-bit output.")
+                    self.logger.warning(
+                        "  WARNING: Images are 8-bit. For best results, "
+                        "configure camera for 16-bit output."
+                    )
 
             # Convert to grayscale preserving bit depth
             pos_img = self.rgb_to_gray(pos_img)
@@ -1025,9 +1056,9 @@ class PPMBirefringenceMaximizationTester:
             self.logger.error(f"Error computing difference for angle {angle}: {e}")
             return None, None, None
 
-    def compute_birefringence_metrics(self, diff_path: Path, angle: float,
-                                       metric_type: str = 'raw',
-                                       use_otsu: bool = True) -> Dict:
+    def compute_birefringence_metrics(
+        self, diff_path: Path, angle: float, metric_type: str = "raw", use_otsu: bool = True
+    ) -> Dict:
         """
         Compute metrics for the birefringence signal.
 
@@ -1048,11 +1079,11 @@ class PPMBirefringenceMaximizationTester:
         try:
             img = cv2.imread(str(diff_path), cv2.IMREAD_UNCHANGED)
             if img is None:
-                return {'error': 'Could not load image'}
+                return {"error": "Could not load image"}
 
             # For normalized images, convert back from scaled storage
             # Normalized abs images are stored as: value * 65535 (range 0-1 -> 0-65535)
-            if metric_type == 'normalized':
+            if metric_type == "normalized":
                 img_float = img.astype(np.float32) / 65535.0  # Back to 0-1 range
             else:
                 img_float = img.astype(np.float32)
@@ -1060,7 +1091,7 @@ class PPMBirefringenceMaximizationTester:
             # Compute threshold for sample region using Otsu or percentile
             if use_otsu:
                 # Convert to 8-bit for Otsu thresholding
-                if metric_type == 'normalized':
+                if metric_type == "normalized":
                     # Normalized is 0-1, scale to 0-255
                     img_8bit = (img_float * 255).astype(np.uint8)
                 else:
@@ -1072,11 +1103,12 @@ class PPMBirefringenceMaximizationTester:
                         img_8bit = np.zeros_like(img_float, dtype=np.uint8)
 
                 # Apply Otsu thresholding
-                otsu_thresh, _ = cv2.threshold(img_8bit, 0, 255,
-                                               cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                otsu_thresh, _ = cv2.threshold(
+                    img_8bit, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+                )
 
                 # Convert Otsu threshold back to original scale
-                if metric_type == 'normalized':
+                if metric_type == "normalized":
                     sample_threshold = otsu_thresh / 255.0
                 else:
                     sample_threshold = (otsu_thresh / 255.0) * img_max if img_max > 0 else 0
@@ -1094,49 +1126,48 @@ class PPMBirefringenceMaximizationTester:
                 sample_mask = np.ones_like(img_float, dtype=bool)
 
             # Compute statistics
-            prefix = 'norm_' if metric_type == 'normalized' else ''
+            prefix = "norm_" if metric_type == "normalized" else ""
 
             # Sample-focused metrics (primary metrics for birefringence analysis)
             metrics = {
-                'angle': angle,
+                "angle": angle,
                 # PRIMARY: Sample-focused metrics using Otsu threshold
-                f'{prefix}mean_signal': float(np.mean(sample_pixels)),
-                f'{prefix}median_signal': float(np.median(sample_pixels)),
-                f'{prefix}max_signal': float(np.max(img_float)),
-                f'{prefix}std_signal': float(np.std(sample_pixels)),
-                f'{prefix}signal_area': float(np.sum(sample_mask)),
-                f'{prefix}sample_pct': float(100.0 * np.sum(sample_mask) / img_float.size),
-                f'{prefix}threshold': float(sample_threshold),
+                f"{prefix}mean_signal": float(np.mean(sample_pixels)),
+                f"{prefix}median_signal": float(np.median(sample_pixels)),
+                f"{prefix}max_signal": float(np.max(img_float)),
+                f"{prefix}std_signal": float(np.std(sample_pixels)),
+                f"{prefix}signal_area": float(np.sum(sample_mask)),
+                f"{prefix}sample_pct": float(100.0 * np.sum(sample_mask) / img_float.size),
+                f"{prefix}threshold": float(sample_threshold),
             }
 
             # Compute percentiles within the sample region for robust statistics
-            metrics[f'{prefix}p90_signal'] = float(np.percentile(sample_pixels, 90))
-            metrics[f'{prefix}p95_signal'] = float(np.percentile(sample_pixels, 95))
-            metrics[f'{prefix}p99_signal'] = float(np.percentile(sample_pixels, 99))
+            metrics[f"{prefix}p90_signal"] = float(np.percentile(sample_pixels, 90))
+            metrics[f"{prefix}p95_signal"] = float(np.percentile(sample_pixels, 95))
+            metrics[f"{prefix}p99_signal"] = float(np.percentile(sample_pixels, 99))
 
             # Background metrics (pixels below the threshold)
             bg_mask = ~sample_mask
             bg_pixels = img_float[bg_mask]
             if len(bg_pixels) > 0:
                 bg_mean = float(np.mean(bg_pixels))
-                metrics[f'{prefix}bg_mean'] = bg_mean
+                metrics[f"{prefix}bg_mean"] = bg_mean
                 # Signal-to-background ratio based on sample vs background means
                 if bg_mean > 0:
-                    metrics[f'{prefix}signal_to_bg_ratio'] = float(
-                        np.mean(sample_pixels) / bg_mean)
+                    metrics[f"{prefix}signal_to_bg_ratio"] = float(np.mean(sample_pixels) / bg_mean)
                 else:
-                    metrics[f'{prefix}signal_to_bg_ratio'] = float(np.mean(sample_pixels))
+                    metrics[f"{prefix}signal_to_bg_ratio"] = float(np.mean(sample_pixels))
             else:
-                metrics[f'{prefix}bg_mean'] = 0.0
-                metrics[f'{prefix}signal_to_bg_ratio'] = float(np.mean(sample_pixels))
+                metrics[f"{prefix}bg_mean"] = 0.0
+                metrics[f"{prefix}signal_to_bg_ratio"] = float(np.mean(sample_pixels))
 
             # Also store whole-image mean for reference
-            metrics[f'{prefix}whole_mean'] = float(np.mean(img_float))
+            metrics[f"{prefix}whole_mean"] = float(np.mean(img_float))
 
             return metrics
 
         except Exception as e:
-            return {'error': str(e), 'angle': angle}
+            return {"error": str(e), "angle": angle}
 
     def run_paired_acquisition(self) -> Dict[float, Dict]:
         """
@@ -1157,22 +1188,23 @@ class PPMBirefringenceMaximizationTester:
         self.logger.info("PAIRED IMAGE ACQUISITION FOR BIREFRINGENCE ANALYSIS")
         self.logger.info("=" * 70)
         self.logger.info("Computing: I(+)-I(-), I(+)+I(-), and [I(+)-I(-)]/[I(+)+I(-)]")
-        self.logger.info(f"Intensity tolerance: +/-{self.intensity_tolerance*100:.1f}% between +/- pairs")
+        self.logger.info(
+            f"Intensity tolerance: +/-{self.intensity_tolerance*100:.1f}% between +/- pairs"
+        )
 
         all_metrics = {}
 
         for i, angle in enumerate(self.test_angles):
-            self.logger.info(f"\n[{i+1}/{len(self.test_angles)}] Testing angle pair: +/-{angle:.2f} deg")
+            self.logger.info(
+                f"\n[{i+1}/{len(self.test_angles)}] Testing angle pair: +/-{angle:.2f} deg"
+            )
 
             # Acquire the pair
             pos_path, neg_path = self.acquire_angle_pair(angle)
 
             if pos_path and neg_path:
                 # Store paths
-                self.acquired_images[angle] = {
-                    'positive': pos_path,
-                    'negative': neg_path
-                }
+                self.acquired_images[angle] = {"positive": pos_path, "negative": neg_path}
 
                 # Check saturation on source images BEFORE computing metrics.
                 # Saturated pixels clip the true signal, causing I(+)-I(-) to be
@@ -1182,11 +1214,11 @@ class PPMBirefringenceMaximizationTester:
                 max_sat_frac = max(pos_sat_frac, neg_sat_frac)
 
                 self.saturation_data[angle] = {
-                    'pos_fraction': pos_sat_frac,
-                    'neg_fraction': neg_sat_frac,
-                    'max_fraction': max_sat_frac,
-                    'pos_max_val': pos_max_val,
-                    'neg_max_val': neg_max_val,
+                    "pos_fraction": pos_sat_frac,
+                    "neg_fraction": neg_sat_frac,
+                    "max_fraction": max_sat_frac,
+                    "pos_max_val": pos_max_val,
+                    "neg_max_val": neg_max_val,
                 }
 
                 if max_sat_frac > self.saturation_threshold_frac:
@@ -1218,18 +1250,22 @@ class PPMBirefringenceMaximizationTester:
 
                 # Compute difference, sum, and normalized difference
                 diff_path, sum_path, norm_path = self.compute_difference_image(
-                    pos_path, neg_path, angle)
+                    pos_path, neg_path, angle
+                )
 
                 if diff_path:
                     self.difference_images[angle] = diff_path
 
                     # Compute raw metrics
                     raw_metrics = self.compute_birefringence_metrics(
-                        diff_path, angle, metric_type='raw')
+                        diff_path, angle, metric_type="raw"
+                    )
                     self.birefringence_metrics[angle] = raw_metrics
 
-                    self.logger.info(f"  Raw - Mean: {raw_metrics.get('mean_signal', 0):.1f}, "
-                                   f"P95: {raw_metrics.get('p95_signal', 0):.1f}")
+                    self.logger.info(
+                        f"  Raw - Mean: {raw_metrics.get('mean_signal', 0):.1f}, "
+                        f"P95: {raw_metrics.get('p95_signal', 0):.1f}"
+                    )
 
                 if sum_path:
                     self.sum_images[angle] = sum_path
@@ -1239,12 +1275,15 @@ class PPMBirefringenceMaximizationTester:
 
                     # Compute normalized metrics
                     norm_metrics = self.compute_birefringence_metrics(
-                        norm_path, angle, metric_type='normalized')
+                        norm_path, angle, metric_type="normalized"
+                    )
                     self.normalized_metrics[angle] = norm_metrics
 
                     # Normalized values are 0-1, so display as percentage
-                    self.logger.info(f"  Normalized - Mean: {norm_metrics.get('norm_mean_signal', 0)*100:.2f}%, "
-                                   f"P95: {norm_metrics.get('norm_p95_signal', 0)*100:.2f}%")
+                    self.logger.info(
+                        f"  Normalized - Mean: {norm_metrics.get('norm_mean_signal', 0)*100:.2f}%, "
+                        f"P95: {norm_metrics.get('norm_p95_signal', 0)*100:.2f}%"
+                    )
 
                 # Combine metrics for return value
                 combined = {}
@@ -1254,15 +1293,15 @@ class PPMBirefringenceMaximizationTester:
                     combined.update(norm_metrics)
                 # Include saturation info so downstream consumers can see it
                 sat_info = self.saturation_data.get(angle, {})
-                combined['saturated_fraction'] = sat_info.get('max_fraction', 0.0)
-                combined['pos_saturated_fraction'] = sat_info.get('pos_fraction', 0.0)
-                combined['neg_saturated_fraction'] = sat_info.get('neg_fraction', 0.0)
+                combined["saturated_fraction"] = sat_info.get("max_fraction", 0.0)
+                combined["pos_saturated_fraction"] = sat_info.get("pos_fraction", 0.0)
+                combined["neg_saturated_fraction"] = sat_info.get("neg_fraction", 0.0)
                 all_metrics[angle] = combined
 
                 if not diff_path and not norm_path:
-                    self.logger.warning(f"  Failed to compute difference images")
+                    self.logger.warning("  Failed to compute difference images")
             else:
-                self.logger.warning(f"  Failed to acquire image pair")
+                self.logger.warning("  Failed to acquire image pair")
 
             # Send progress update after each angle
             if self.progress_callback:
@@ -1359,7 +1398,7 @@ class PPMBirefringenceMaximizationTester:
             - 'best_non_saturated_signal': float - signal at clean alternative
         """
         metrics_dict = self.normalized_metrics if use_normalized else self.birefringence_metrics
-        signal_key = 'norm_mean_signal' if use_normalized else 'mean_signal'
+        signal_key = "norm_mean_signal" if use_normalized else "mean_signal"
 
         if not metrics_dict:
             return 0.0, {}
@@ -1379,7 +1418,7 @@ class PPMBirefringenceMaximizationTester:
                 best_angle = angle
 
             # Track best angle without significant saturation
-            sat_frac = self.saturation_data.get(angle, {}).get('max_fraction', 0.0)
+            sat_frac = self.saturation_data.get(angle, {}).get("max_fraction", 0.0)
             if sat_frac <= self.saturation_threshold_frac and signal > best_clean_signal:
                 best_clean_signal = signal
                 best_clean_angle = angle
@@ -1387,9 +1426,9 @@ class PPMBirefringenceMaximizationTester:
         result_metrics = dict(metrics_dict.get(best_angle, {}))
 
         # Add saturation awareness to returned metrics
-        best_sat = self.saturation_data.get(best_angle, {}).get('max_fraction', 0.0)
-        result_metrics['optimal_saturated'] = best_sat > self.saturation_threshold_frac
-        result_metrics['optimal_saturation_frac'] = best_sat
+        best_sat = self.saturation_data.get(best_angle, {}).get("max_fraction", 0.0)
+        result_metrics["optimal_saturated"] = best_sat > self.saturation_threshold_frac
+        result_metrics["optimal_saturation_frac"] = best_sat
 
         if best_sat > self.saturation_threshold_frac:
             method = "Normalized" if use_normalized else "Raw"
@@ -1399,8 +1438,8 @@ class PPMBirefringenceMaximizationTester:
             )
 
             if best_clean_angle is not None and best_clean_angle != best_angle:
-                result_metrics['best_non_saturated_angle'] = best_clean_angle
-                result_metrics['best_non_saturated_signal'] = best_clean_signal
+                result_metrics["best_non_saturated_angle"] = best_clean_angle
+                result_metrics["best_non_saturated_signal"] = best_clean_signal
                 self.logger.warning(
                     f"Best non-saturated alternative: {best_clean_angle:.2f} deg "
                     f"(signal={best_clean_signal:.1f})"
@@ -1427,15 +1466,21 @@ class PPMBirefringenceMaximizationTester:
 
         # Extract data for plotting
         angles = sorted(self.birefringence_metrics.keys())
-        mean_signals = [self.birefringence_metrics[a].get('mean_signal', 0) for a in angles]
-        p95_signals = [self.birefringence_metrics[a].get('p95_signal', 0) for a in angles]
+        mean_signals = [self.birefringence_metrics[a].get("mean_signal", 0) for a in angles]
+        p95_signals = [self.birefringence_metrics[a].get("p95_signal", 0) for a in angles]
 
         # Extract normalized data
         norm_angles = sorted(self.normalized_metrics.keys()) if self.normalized_metrics else []
-        norm_mean_signals = [self.normalized_metrics[a].get('norm_mean_signal', 0) * 100
-                           for a in norm_angles] if self.normalized_metrics else []
-        norm_p95_signals = [self.normalized_metrics[a].get('norm_p95_signal', 0) * 100
-                          for a in norm_angles] if self.normalized_metrics else []
+        norm_mean_signals = (
+            [self.normalized_metrics[a].get("norm_mean_signal", 0) * 100 for a in norm_angles]
+            if self.normalized_metrics
+            else []
+        )
+        norm_p95_signals = (
+            [self.normalized_metrics[a].get("norm_p95_signal", 0) * 100 for a in norm_angles]
+            if self.normalized_metrics
+            else []
+        )
 
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
@@ -1445,127 +1490,194 @@ class PPMBirefringenceMaximizationTester:
 
         # Identify saturated angles for marking on plots
         sat_marker_angles = [a for a in self.saturated_angles if a in angles]
-        sat_marker_raw = [self.birefringence_metrics[a].get('mean_signal', 0) for a in sat_marker_angles]
+        sat_marker_raw = [
+            self.birefringence_metrics[a].get("mean_signal", 0) for a in sat_marker_angles
+        ]
         sat_marker_norm_angles = [a for a in self.saturated_angles if a in norm_angles]
-        sat_marker_norm = [self.normalized_metrics[a].get('norm_mean_signal', 0) * 100
-                          for a in sat_marker_norm_angles] if self.normalized_metrics else []
+        sat_marker_norm = (
+            [
+                self.normalized_metrics[a].get("norm_mean_signal", 0) * 100
+                for a in sat_marker_norm_angles
+            ]
+            if self.normalized_metrics
+            else []
+        )
 
         # Plot 1: Raw Signal vs Angle I(+) - I(-)
         ax = axes[0, 0]
-        ax.plot(angles, mean_signals, 'b-o', label='Sample Mean', markersize=3, linewidth=1.5)
-        ax.plot(angles, p95_signals, 'r-s', label='Sample P95', markersize=3, linewidth=1, alpha=0.7)
-        ax.axvline(x=optimal_angle_raw, color='green', linestyle='--', linewidth=2,
-                   label=f'Optimal: {optimal_angle_raw:.2f} deg')
+        ax.plot(angles, mean_signals, "b-o", label="Sample Mean", markersize=3, linewidth=1.5)
+        ax.plot(
+            angles, p95_signals, "r-s", label="Sample P95", markersize=3, linewidth=1, alpha=0.7
+        )
+        ax.axvline(
+            x=optimal_angle_raw,
+            color="green",
+            linestyle="--",
+            linewidth=2,
+            label=f"Optimal: {optimal_angle_raw:.2f} deg",
+        )
         # Mark saturated angles with red X
         if sat_marker_angles:
-            ax.scatter(sat_marker_angles, sat_marker_raw, c='red', marker='x', s=100,
-                      zorder=5, linewidths=2, label=f'Saturated ({len(sat_marker_angles)})')
-        ax.set_xlabel('Angle (degrees)')
-        ax.set_ylabel('Sample Signal Intensity (Otsu)')
-        raw_title = 'RAW DIFFERENCE: I(+) - I(-)\n(Sample region via Otsu threshold)'
-        if optimal_metrics_raw.get('optimal_saturated', False):
-            raw_title += '\n** OPTIMAL ANGLE HAS SATURATION **'
+            ax.scatter(
+                sat_marker_angles,
+                sat_marker_raw,
+                c="red",
+                marker="x",
+                s=100,
+                zorder=5,
+                linewidths=2,
+                label=f"Saturated ({len(sat_marker_angles)})",
+            )
+        ax.set_xlabel("Angle (degrees)")
+        ax.set_ylabel("Sample Signal Intensity (Otsu)")
+        raw_title = "RAW DIFFERENCE: I(+) - I(-)\n(Sample region via Otsu threshold)"
+        if optimal_metrics_raw.get("optimal_saturated", False):
+            raw_title += "\n** OPTIMAL ANGLE HAS SATURATION **"
         ax.set_title(raw_title)
-        ax.legend(loc='upper right')
+        ax.legend(loc="upper right")
         ax.grid(True, alpha=0.3)
 
         # Plot 2: Normalized Signal vs Angle [I(+) - I(-)]/[I(+) + I(-)]
         ax = axes[0, 1]
         if norm_angles and norm_mean_signals:
-            ax.plot(norm_angles, norm_mean_signals, 'b-o', label='Sample Mean (%)', markersize=3, linewidth=1.5)
-            ax.plot(norm_angles, norm_p95_signals, 'r-s', label='Sample P95 (%)', markersize=3, linewidth=1, alpha=0.7)
-            ax.axvline(x=optimal_angle_norm, color='purple', linestyle='--', linewidth=2,
-                       label=f'Optimal: {optimal_angle_norm:.2f} deg')
+            ax.plot(
+                norm_angles,
+                norm_mean_signals,
+                "b-o",
+                label="Sample Mean (%)",
+                markersize=3,
+                linewidth=1.5,
+            )
+            ax.plot(
+                norm_angles,
+                norm_p95_signals,
+                "r-s",
+                label="Sample P95 (%)",
+                markersize=3,
+                linewidth=1,
+                alpha=0.7,
+            )
+            ax.axvline(
+                x=optimal_angle_norm,
+                color="purple",
+                linestyle="--",
+                linewidth=2,
+                label=f"Optimal: {optimal_angle_norm:.2f} deg",
+            )
             # Mark saturated angles with red X
             if sat_marker_norm_angles:
-                ax.scatter(sat_marker_norm_angles, sat_marker_norm, c='red', marker='x', s=100,
-                          zorder=5, linewidths=2, label=f'Saturated ({len(sat_marker_norm_angles)})')
-        ax.set_xlabel('Angle (degrees)')
-        ax.set_ylabel('Sample Normalized Signal (%)')
-        norm_title = 'NORMALIZED: [I(+)-I(-)]/[I(+)+I(-)]\n(Sample region via Otsu threshold)'
-        if optimal_metrics_norm.get('optimal_saturated', False):
-            norm_title += '\n** OPTIMAL ANGLE HAS SATURATION **'
+                ax.scatter(
+                    sat_marker_norm_angles,
+                    sat_marker_norm,
+                    c="red",
+                    marker="x",
+                    s=100,
+                    zorder=5,
+                    linewidths=2,
+                    label=f"Saturated ({len(sat_marker_norm_angles)})",
+                )
+        ax.set_xlabel("Angle (degrees)")
+        ax.set_ylabel("Sample Normalized Signal (%)")
+        norm_title = "NORMALIZED: [I(+)-I(-)]/[I(+)+I(-)]\n(Sample region via Otsu threshold)"
+        if optimal_metrics_norm.get("optimal_saturated", False):
+            norm_title += "\n** OPTIMAL ANGLE HAS SATURATION **"
         ax.set_title(norm_title)
-        ax.legend(loc='upper right')
+        ax.legend(loc="upper right")
         ax.grid(True, alpha=0.3)
 
         # Plot 3: Comparison of Raw vs Normalized (overlaid, dual y-axis)
         ax = axes[0, 2]
-        ax.plot(angles, mean_signals, 'b-o', label='Raw Mean', markersize=3, linewidth=1.5)
-        ax.set_xlabel('Angle (degrees)')
-        ax.set_ylabel('Raw Signal', color='blue')
-        ax.tick_params(axis='y', labelcolor='blue')
-        ax.axvline(x=optimal_angle_raw, color='blue', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.plot(angles, mean_signals, "b-o", label="Raw Mean", markersize=3, linewidth=1.5)
+        ax.set_xlabel("Angle (degrees)")
+        ax.set_ylabel("Raw Signal", color="blue")
+        ax.tick_params(axis="y", labelcolor="blue")
+        ax.axvline(x=optimal_angle_raw, color="blue", linestyle="--", linewidth=1.5, alpha=0.7)
 
         ax2 = ax.twinx()
         if norm_angles and norm_mean_signals:
-            ax2.plot(norm_angles, norm_mean_signals, 'g-s', label='Normalized Mean (%)',
-                    markersize=3, linewidth=1.5)
-            ax2.axvline(x=optimal_angle_norm, color='green', linestyle=':', linewidth=1.5, alpha=0.7)
-        ax2.set_ylabel('Normalized Signal (%)', color='green')
-        ax2.tick_params(axis='y', labelcolor='green')
-        ax.set_title('RAW vs NORMALIZED COMPARISON')
+            ax2.plot(
+                norm_angles,
+                norm_mean_signals,
+                "g-s",
+                label="Normalized Mean (%)",
+                markersize=3,
+                linewidth=1.5,
+            )
+            ax2.axvline(
+                x=optimal_angle_norm, color="green", linestyle=":", linewidth=1.5, alpha=0.7
+            )
+        ax2.set_ylabel("Normalized Signal (%)", color="green")
+        ax2.tick_params(axis="y", labelcolor="green")
+        ax.set_title("RAW vs NORMALIZED COMPARISON")
         # Combined legend
         lines1, labels1 = ax.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
-        ax.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+        ax.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
         ax.grid(True, alpha=0.3)
 
         # Plot 4: Raw difference image at optimal angle
         ax = axes[1, 0]
         if self.difference_images and optimal_angle_raw in self.difference_images:
-            diff_img = cv2.imread(str(self.difference_images[optimal_angle_raw]), cv2.IMREAD_UNCHANGED)
+            diff_img = cv2.imread(
+                str(self.difference_images[optimal_angle_raw]), cv2.IMREAD_UNCHANGED
+            )
             if diff_img is not None:
-                im = ax.imshow(diff_img, cmap='hot')
-                ax.set_title(f'Raw Diff at {optimal_angle_raw:.2f} deg')
+                im = ax.imshow(diff_img, cmap="hot")
+                ax.set_title(f"Raw Diff at {optimal_angle_raw:.2f} deg")
                 plt.colorbar(im, ax=ax, fraction=0.046)
-                ax.axis('off')
+                ax.axis("off")
         else:
-            ax.text(0.5, 0.5, 'No image', ha='center', va='center', transform=ax.transAxes)
-            ax.set_title('Raw Difference Image')
+            ax.text(0.5, 0.5, "No image", ha="center", va="center", transform=ax.transAxes)
+            ax.set_title("Raw Difference Image")
 
         # Plot 5: Normalized difference image at optimal angle
         ax = axes[1, 1]
         if self.normalized_images and optimal_angle_norm in self.normalized_images:
-            norm_img = cv2.imread(str(self.normalized_images[optimal_angle_norm]), cv2.IMREAD_UNCHANGED)
+            norm_img = cv2.imread(
+                str(self.normalized_images[optimal_angle_norm]), cv2.IMREAD_UNCHANGED
+            )
             if norm_img is not None:
                 # Convert back to 0-1 scale for display
                 norm_display = norm_img.astype(np.float32) / 65535.0
-                im = ax.imshow(norm_display, cmap='hot', vmin=0, vmax=1)
-                ax.set_title(f'Normalized at {optimal_angle_norm:.2f} deg')
+                im = ax.imshow(norm_display, cmap="hot", vmin=0, vmax=1)
+                ax.set_title(f"Normalized at {optimal_angle_norm:.2f} deg")
                 cbar = plt.colorbar(im, ax=ax, fraction=0.046)
-                cbar.set_label('Normalized Signal')
-                ax.axis('off')
+                cbar.set_label("Normalized Signal")
+                ax.axis("off")
         else:
-            ax.text(0.5, 0.5, 'No image', ha='center', va='center', transform=ax.transAxes)
-            ax.set_title('Normalized Difference Image')
+            ax.text(0.5, 0.5, "No image", ha="center", va="center", transform=ax.transAxes)
+            ax.set_title("Normalized Difference Image")
 
         # Plot 6: Zero-angle sanity check (should be ~0 for both)
         ax = axes[1, 2]
         if 0.0 in self.difference_images:
             zero_diff = cv2.imread(str(self.difference_images[0.0]), cv2.IMREAD_UNCHANGED)
             if zero_diff is not None:
-                im = ax.imshow(zero_diff, cmap='hot')
+                im = ax.imshow(zero_diff, cmap="hot")
                 zero_mean = np.mean(zero_diff)
                 zero_norm_mean = 0.0
                 if 0.0 in self.normalized_metrics:
-                    zero_norm_mean = self.normalized_metrics[0.0].get('norm_mean_signal', 0) * 100
-                ax.set_title(f'SANITY CHECK: 0 deg\nRaw={zero_mean:.1f}, Norm={zero_norm_mean:.2f}%')
+                    zero_norm_mean = self.normalized_metrics[0.0].get("norm_mean_signal", 0) * 100
+                ax.set_title(
+                    f"SANITY CHECK: 0 deg\nRaw={zero_mean:.1f}, Norm={zero_norm_mean:.2f}%"
+                )
                 plt.colorbar(im, ax=ax, fraction=0.046)
-                ax.axis('off')
-                self.logger.info(f"Sanity check (0 deg): raw={zero_mean:.1f}, norm={zero_norm_mean:.2f}%")
+                ax.axis("off")
+                self.logger.info(
+                    f"Sanity check (0 deg): raw={zero_mean:.1f}, norm={zero_norm_mean:.2f}%"
+                )
         else:
-            ax.text(0.5, 0.5, 'No 0 deg image', ha='center', va='center', transform=ax.transAxes)
-            ax.set_title('Sanity Check: 0 deg')
+            ax.text(0.5, 0.5, "No 0 deg image", ha="center", va="center", transform=ax.transAxes)
+            ax.set_title("Sanity Check: 0 deg")
 
-        suptitle = 'PPM BIREFRINGENCE: RAW vs NORMALIZED COMPARISON'
+        suptitle = "PPM BIREFRINGENCE: RAW vs NORMALIZED COMPARISON"
         if self.saturated_angles:
-            suptitle += f'\n[WARNING: {len(self.saturated_angles)} angle(s) had pixel saturation]'
-        plt.suptitle(suptitle, fontsize=16, fontweight='bold')
+            suptitle += f"\n[WARNING: {len(self.saturated_angles)} angle(s) had pixel saturation]"
+        plt.suptitle(suptitle, fontsize=16, fontweight="bold")
         plt.tight_layout()
 
-        plot_path = self.output_dir / 'birefringence_analysis.png'
-        plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+        plot_path = self.output_dir / "birefringence_analysis.png"
+        plt.savefig(plot_path, dpi=150, bbox_inches="tight")
         plt.close()
 
         self.logger.info(f"Saved visualization to {plot_path}")
@@ -1579,75 +1691,76 @@ class PPMBirefringenceMaximizationTester:
         # Save metrics as JSON
         metrics_file = self.output_dir / "birefringence_metrics.json"
         metrics_data = {
-            'test_date': datetime.now().isoformat(),
-            'config_file': str(self.config_yaml),
-            'angle_range': list(self.angle_range),
-            'angle_step': self.angle_step,
-            'exposure_mode': self.exposure_mode,
-            'intensity_tolerance': self.intensity_tolerance,
-            'raw_metrics': {str(k): v for k, v in self.birefringence_metrics.items()},
-            'normalized_metrics': {str(k): v for k, v in self.normalized_metrics.items()},
-            'optimal_angle_raw': optimal_angle_raw,
-            'optimal_metrics_raw': optimal_metrics_raw,
-            'optimal_angle_normalized': optimal_angle_norm,
-            'optimal_metrics_normalized': optimal_metrics_norm,
-            'intensity_validation': {
-                'tolerance': self.intensity_tolerance,
-                'mismatches': self.intensity_mismatches,
-                'omitted_angles': self.omitted_angles,
-                'total_angles_tested': len(self.test_angles),
-                'angles_included': len(self.test_angles) - len(self.omitted_angles),
+            "test_date": datetime.now().isoformat(),
+            "config_file": str(self.config_yaml),
+            "angle_range": list(self.angle_range),
+            "angle_step": self.angle_step,
+            "exposure_mode": self.exposure_mode,
+            "intensity_tolerance": self.intensity_tolerance,
+            "raw_metrics": {str(k): v for k, v in self.birefringence_metrics.items()},
+            "normalized_metrics": {str(k): v for k, v in self.normalized_metrics.items()},
+            "optimal_angle_raw": optimal_angle_raw,
+            "optimal_metrics_raw": optimal_metrics_raw,
+            "optimal_angle_normalized": optimal_angle_norm,
+            "optimal_metrics_normalized": optimal_metrics_norm,
+            "intensity_validation": {
+                "tolerance": self.intensity_tolerance,
+                "mismatches": self.intensity_mismatches,
+                "omitted_angles": self.omitted_angles,
+                "total_angles_tested": len(self.test_angles),
+                "angles_included": len(self.test_angles) - len(self.omitted_angles),
             },
-            'saturation_analysis': {
-                'threshold_fraction': self.saturation_threshold_frac,
-                'total_angles_tested': len(self.test_angles),
-                'angles_with_saturation': len(self.saturated_angles),
-                'saturated_angle_list': [round(a, 2) for a in sorted(self.saturated_angles)],
-                'per_angle_data': {str(k): v for k, v in self.saturation_data.items()},
-                'optimal_raw_saturated': optimal_metrics_raw.get('optimal_saturated', False),
-                'optimal_norm_saturated': optimal_metrics_norm.get('optimal_saturated', False),
-                'best_non_saturated_raw': optimal_metrics_raw.get(
-                    'best_non_saturated_angle', None),
-                'best_non_saturated_norm': optimal_metrics_norm.get(
-                    'best_non_saturated_angle', None),
+            "saturation_analysis": {
+                "threshold_fraction": self.saturation_threshold_frac,
+                "total_angles_tested": len(self.test_angles),
+                "angles_with_saturation": len(self.saturated_angles),
+                "saturated_angle_list": [round(a, 2) for a in sorted(self.saturated_angles)],
+                "per_angle_data": {str(k): v for k, v in self.saturation_data.items()},
+                "optimal_raw_saturated": optimal_metrics_raw.get("optimal_saturated", False),
+                "optimal_norm_saturated": optimal_metrics_norm.get("optimal_saturated", False),
+                "best_non_saturated_raw": optimal_metrics_raw.get("best_non_saturated_angle", None),
+                "best_non_saturated_norm": optimal_metrics_norm.get(
+                    "best_non_saturated_angle", None
+                ),
             },
         }
 
-        with open(metrics_file, 'w') as f:
+        with open(metrics_file, "w") as f:
             json.dump(metrics_data, f, indent=2)
 
         # Save CSV for easy analysis - combined raw and normalized
         csv_file = self.output_dir / "birefringence_metrics.csv"
-        with open(csv_file, 'w') as f:
+        with open(csv_file, "w") as f:
             # Build combined headers from raw and normalized metrics
             raw_keys = []
             norm_keys = []
             if self.birefringence_metrics:
                 first_raw = list(self.birefringence_metrics.values())[0]
-                raw_keys = [k for k in first_raw.keys() if k != 'angle']
+                raw_keys = [k for k in first_raw.keys() if k != "angle"]
             if self.normalized_metrics:
                 first_norm = list(self.normalized_metrics.values())[0]
-                norm_keys = [k for k in first_norm.keys() if k != 'angle']
+                norm_keys = [k for k in first_norm.keys() if k != "angle"]
 
-            headers = ['angle'] + raw_keys + norm_keys
-            f.write(','.join(headers) + '\n')
+            headers = ["angle"] + raw_keys + norm_keys
+            f.write(",".join(headers) + "\n")
 
             # Data rows - use raw metrics angles as primary
-            all_angles = sorted(set(self.birefringence_metrics.keys()) |
-                              set(self.normalized_metrics.keys()))
+            all_angles = sorted(
+                set(self.birefringence_metrics.keys()) | set(self.normalized_metrics.keys())
+            )
             for angle in all_angles:
                 row = [str(angle)]
                 raw_m = self.birefringence_metrics.get(angle, {})
                 norm_m = self.normalized_metrics.get(angle, {})
                 for k in raw_keys:
-                    row.append(str(raw_m.get(k, '')))
+                    row.append(str(raw_m.get(k, "")))
                 for k in norm_keys:
-                    row.append(str(norm_m.get(k, '')))
-                f.write(','.join(row) + '\n')
+                    row.append(str(norm_m.get(k, "")))
+                f.write(",".join(row) + "\n")
 
         # Save human-readable summary
         summary_file = self.output_dir / "birefringence_summary.txt"
-        with open(summary_file, 'w') as f:
+        with open(summary_file, "w") as f:
             f.write("=" * 70 + "\n")
             f.write("PPM BIREFRINGENCE MAXIMIZATION TEST SUMMARY\n")
             f.write("=" * 70 + "\n\n")
@@ -1665,11 +1778,15 @@ class PPMBirefringenceMaximizationTester:
             f.write("=" * 70 + "\n\n")
             f.write(f"Tolerance: +/-{self.intensity_tolerance*100:.1f}% relative difference\n")
             f.write(f"Total angle pairs tested: {len(self.test_angles)}\n")
-            f.write(f"Angle pairs included in analysis: {len(self.test_angles) - len(self.omitted_angles)}\n")
+            f.write(
+                f"Angle pairs included in analysis: {len(self.test_angles) - len(self.omitted_angles)}\n"
+            )
             f.write(f"Angle pairs omitted: {len(self.omitted_angles)}\n\n")
 
             if self.intensity_mismatches:
-                f.write("WARNING: The following angles had intensity mismatch and were OMITTED:\n\n")
+                f.write(
+                    "WARNING: The following angles had intensity mismatch and were OMITTED:\n\n"
+                )
                 for mismatch in self.intensity_mismatches:
                     f.write(
                         f"  +/-{mismatch['angle']:.2f} deg: "
@@ -1687,10 +1804,14 @@ class PPMBirefringenceMaximizationTester:
             f.write("=" * 70 + "\n")
             f.write("SATURATION ANALYSIS\n")
             f.write("=" * 70 + "\n\n")
-            f.write(f"Saturation threshold: {self.saturation_threshold_frac*100:.0f}% of pixels "
-                    f"at/near detector ceiling\n")
-            f.write(f"Angles with saturation: {len(self.saturated_angles)} of "
-                    f"{len(self.test_angles)}\n\n")
+            f.write(
+                f"Saturation threshold: {self.saturation_threshold_frac*100:.0f}% of pixels "
+                f"at/near detector ceiling\n"
+            )
+            f.write(
+                f"Angles with saturation: {len(self.saturated_angles)} of "
+                f"{len(self.test_angles)}\n\n"
+            )
 
             if self.saturated_angles:
                 f.write("WARNING: Saturated pixels clip the true birefringence signal.\n")
@@ -1699,8 +1820,10 @@ class PPMBirefringenceMaximizationTester:
                 f.write("signal at saturated angles is underestimated, and the\n")
                 f.write("recommended angle may be incorrect.\n\n")
 
-                f.write(f"{'Angle':>8}  {'Pos Sat%':>10}  {'Neg Sat%':>10}  "
-                        f"{'Pos Max':>10}  {'Neg Max':>10}\n")
+                f.write(
+                    f"{'Angle':>8}  {'Pos Sat%':>10}  {'Neg Sat%':>10}  "
+                    f"{'Pos Max':>10}  {'Neg Max':>10}\n"
+                )
                 f.write("-" * 55 + "\n")
                 for sat_angle in sorted(self.saturated_angles):
                     sd = self.saturation_data[sat_angle]
@@ -1712,25 +1835,31 @@ class PPMBirefringenceMaximizationTester:
                 f.write("\n")
 
                 # Report on optimal angle saturation
-                if optimal_metrics_raw.get('optimal_saturated', False):
+                if optimal_metrics_raw.get("optimal_saturated", False):
                     f.write(f"** Raw optimal angle ({optimal_angle_raw:.2f} deg) is SATURATED **\n")
-                    alt = optimal_metrics_raw.get('best_non_saturated_angle')
+                    alt = optimal_metrics_raw.get("best_non_saturated_angle")
                     if alt is not None:
-                        alt_sig = optimal_metrics_raw.get('best_non_saturated_signal', 0)
-                        f.write(f"   Best non-saturated alternative: {alt:.2f} deg "
-                                f"(signal={alt_sig:.1f})\n")
+                        alt_sig = optimal_metrics_raw.get("best_non_saturated_signal", 0)
+                        f.write(
+                            f"   Best non-saturated alternative: {alt:.2f} deg "
+                            f"(signal={alt_sig:.1f})\n"
+                        )
                     else:
                         f.write("   No non-saturated angles available.\n")
                     f.write("\n")
 
-                if optimal_metrics_norm.get('optimal_saturated', False):
-                    f.write(f"** Normalized optimal angle ({optimal_angle_norm:.2f} deg) "
-                            f"is SATURATED **\n")
-                    alt = optimal_metrics_norm.get('best_non_saturated_angle')
+                if optimal_metrics_norm.get("optimal_saturated", False):
+                    f.write(
+                        f"** Normalized optimal angle ({optimal_angle_norm:.2f} deg) "
+                        f"is SATURATED **\n"
+                    )
+                    alt = optimal_metrics_norm.get("best_non_saturated_angle")
                     if alt is not None:
-                        alt_sig = optimal_metrics_norm.get('best_non_saturated_signal', 0)
-                        f.write(f"   Best non-saturated alternative: {alt:.2f} deg "
-                                f"(signal={alt_sig:.1f})\n")
+                        alt_sig = optimal_metrics_norm.get("best_non_saturated_signal", 0)
+                        f.write(
+                            f"   Best non-saturated alternative: {alt:.2f} deg "
+                            f"(signal={alt_sig:.1f})\n"
+                        )
                     else:
                         f.write("   No non-saturated angles available.\n")
                     f.write("\n")
@@ -1766,14 +1895,16 @@ class PPMBirefringenceMaximizationTester:
             f.write(f"   Mean signal: {optimal_metrics_raw.get('mean_signal', 0):.1f}\n")
             f.write(f"   Max signal: {optimal_metrics_raw.get('max_signal', 0):.1f}\n")
             f.write(f"   P95 signal: {optimal_metrics_raw.get('p95_signal', 0):.1f}\n")
-            f.write(f"   Signal/BG ratio: {optimal_metrics_raw.get('signal_to_bg_ratio', 0):.2f}\n\n")
+            f.write(
+                f"   Signal/BG ratio: {optimal_metrics_raw.get('signal_to_bg_ratio', 0):.2f}\n\n"
+            )
 
             f.write("2. NORMALIZED DIFFERENCE OPTIMAL ANGLE\n")
             f.write("-" * 40 + "\n")
             f.write(f"   Optimal angle: {optimal_angle_norm:.2f} degrees\n")
-            norm_mean = optimal_metrics_norm.get('norm_mean_signal', 0) * 100
-            norm_max = optimal_metrics_norm.get('norm_max_signal', 0) * 100
-            norm_p95 = optimal_metrics_norm.get('norm_p95_signal', 0) * 100
+            norm_mean = optimal_metrics_norm.get("norm_mean_signal", 0) * 100
+            norm_max = optimal_metrics_norm.get("norm_max_signal", 0) * 100
+            norm_p95 = optimal_metrics_norm.get("norm_p95_signal", 0) * 100
             f.write(f"   Mean signal: {norm_mean:.2f}%\n")
             f.write(f"   Max signal: {norm_max:.2f}%\n")
             f.write(f"   P95 signal: {norm_p95:.2f}%\n\n")
@@ -1800,17 +1931,21 @@ class PPMBirefringenceMaximizationTester:
                 f.write("At 0 degrees (should be ~zero for both methods):\n\n")
                 if zero_raw:
                     f.write(f"  Raw mean signal: {zero_raw.get('mean_signal', 0):.1f}\n")
-                    if optimal_metrics_raw.get('mean_signal', 0) > 0:
-                        ratio = zero_raw.get('mean_signal', 0) / optimal_metrics_raw.get('mean_signal', 1)
+                    if optimal_metrics_raw.get("mean_signal", 0) > 0:
+                        ratio = zero_raw.get("mean_signal", 0) / optimal_metrics_raw.get(
+                            "mean_signal", 1
+                        )
                         f.write(f"  Raw ratio vs optimal: {ratio:.4f}\n")
                 if zero_norm:
-                    zero_norm_pct = zero_norm.get('norm_mean_signal', 0) * 100
+                    zero_norm_pct = zero_norm.get("norm_mean_signal", 0) * 100
                     f.write(f"  Normalized mean signal: {zero_norm_pct:.4f}%\n")
 
                 # Interpret results
                 raw_ratio = 0
-                if zero_raw and optimal_metrics_raw.get('mean_signal', 0) > 0:
-                    raw_ratio = zero_raw.get('mean_signal', 0) / optimal_metrics_raw.get('mean_signal', 1)
+                if zero_raw and optimal_metrics_raw.get("mean_signal", 0) > 0:
+                    raw_ratio = zero_raw.get("mean_signal", 0) / optimal_metrics_raw.get(
+                        "mean_signal", 1
+                    )
 
                 if raw_ratio < 0.1:
                     f.write("\n  --> GOOD: Zero-angle signal is low as expected\n")
@@ -1825,38 +1960,48 @@ class PPMBirefringenceMaximizationTester:
             f.write("RAW DIFFERENCE RESULTS TABLE\n")
             f.write("=" * 70 + "\n\n")
 
-            f.write(f"{'Angle':>8}  {'Mean':>10}  {'Max':>10}  {'P95':>10}  "
-                    f"{'S/B Ratio':>10}  {'Sat%':>7}\n")
+            f.write(
+                f"{'Angle':>8}  {'Mean':>10}  {'Max':>10}  {'P95':>10}  "
+                f"{'S/B Ratio':>10}  {'Sat%':>7}\n"
+            )
             f.write("-" * 62 + "\n")
 
             for angle in sorted(self.birefringence_metrics.keys()):
                 m = self.birefringence_metrics[angle]
-                sat_pct = self.saturation_data.get(angle, {}).get('max_fraction', 0.0) * 100
+                sat_pct = self.saturation_data.get(angle, {}).get("max_fraction", 0.0) * 100
                 sat_marker = " *" if sat_pct > self.saturation_threshold_frac * 100 else ""
-                f.write(f"{angle:>8.2f}  {m.get('mean_signal', 0):>10.1f}  "
-                       f"{m.get('max_signal', 0):>10.1f}  {m.get('p95_signal', 0):>10.1f}  "
-                       f"{m.get('signal_to_bg_ratio', 0):>10.2f}  {sat_pct:>6.2f}{sat_marker}\n")
+                f.write(
+                    f"{angle:>8.2f}  {m.get('mean_signal', 0):>10.1f}  "
+                    f"{m.get('max_signal', 0):>10.1f}  {m.get('p95_signal', 0):>10.1f}  "
+                    f"{m.get('signal_to_bg_ratio', 0):>10.2f}  {sat_pct:>6.2f}{sat_marker}\n"
+                )
 
             f.write("\n")
             f.write("=" * 70 + "\n")
             f.write("NORMALIZED DIFFERENCE RESULTS TABLE\n")
             f.write("=" * 70 + "\n\n")
 
-            f.write(f"{'Angle':>8}  {'Mean%':>10}  {'Max%':>10}  {'P95%':>10}  "
-                    f"{'S/B Ratio':>10}  {'Sat%':>7}\n")
+            f.write(
+                f"{'Angle':>8}  {'Mean%':>10}  {'Max%':>10}  {'P95%':>10}  "
+                f"{'S/B Ratio':>10}  {'Sat%':>7}\n"
+            )
             f.write("-" * 62 + "\n")
 
             for angle in sorted(self.normalized_metrics.keys()):
                 m = self.normalized_metrics[angle]
-                sat_pct = self.saturation_data.get(angle, {}).get('max_fraction', 0.0) * 100
+                sat_pct = self.saturation_data.get(angle, {}).get("max_fraction", 0.0) * 100
                 sat_marker = " *" if sat_pct > self.saturation_threshold_frac * 100 else ""
-                f.write(f"{angle:>8.2f}  {m.get('norm_mean_signal', 0)*100:>10.2f}  "
-                       f"{m.get('norm_max_signal', 0)*100:>10.2f}  {m.get('norm_p95_signal', 0)*100:>10.2f}  "
-                       f"{m.get('norm_signal_to_bg_ratio', 0):>10.2f}  {sat_pct:>6.2f}{sat_marker}\n")
+                f.write(
+                    f"{angle:>8.2f}  {m.get('norm_mean_signal', 0)*100:>10.2f}  "
+                    f"{m.get('norm_max_signal', 0)*100:>10.2f}  {m.get('norm_p95_signal', 0)*100:>10.2f}  "
+                    f"{m.get('norm_signal_to_bg_ratio', 0):>10.2f}  {sat_pct:>6.2f}{sat_marker}\n"
+                )
 
             if self.saturated_angles:
-                f.write("\n* = angle has significant pixel saturation "
-                        "(signal may be underestimated)\n")
+                f.write(
+                    "\n* = angle has significant pixel saturation "
+                    "(signal may be underestimated)\n"
+                )
 
             f.write("\n")
             f.write("=" * 70 + "\n")
@@ -1883,7 +2028,7 @@ class PPMBirefringenceMaximizationTester:
                 self.logger.warning(f"Failed to remove {tif}: {e}")
 
         # Subdirectories
-        for subdir in ['differences', 'calibration']:
+        for subdir in ["differences", "calibration"]:
             sub_path = self.output_dir / subdir
             if sub_path.exists():
                 for tif in sub_path.glob("*.tif"):
@@ -1930,7 +2075,9 @@ class PPMBirefringenceMaximizationTester:
             if self.exposure_mode == "calibrate":
                 self.logger.info("PHASE 2: TISSUE ACQUISITION")
             elif self.exposure_mode == "fixed":
-                self.logger.info(f"PAIRED ACQUISITION (FIXED EXPOSURE: {self.fixed_exposure_ms} ms)")
+                self.logger.info(
+                    f"PAIRED ACQUISITION (FIXED EXPOSURE: {self.fixed_exposure_ms} ms)"
+                )
             else:
                 self.logger.info("PAIRED ACQUISITION")
             self.logger.info("=" * 70)
@@ -1947,46 +2094,60 @@ class PPMBirefringenceMaximizationTester:
             optimal_raw, metrics_raw = self.find_optimal_angle(use_normalized=False)
             optimal_norm, metrics_norm = self.find_optimal_angle(use_normalized=True)
 
-            self.logger.info(f"\nRAW DIFFERENCE [I(+) - I(-)]:")
+            self.logger.info("\nRAW DIFFERENCE [I(+) - I(-)]:")
             self.logger.info(f"  Optimal angle: {optimal_raw:.2f} degrees")
             self.logger.info(f"  Mean signal: {metrics_raw.get('mean_signal', 0):.1f}")
             self.logger.info(f"  P95 signal: {metrics_raw.get('p95_signal', 0):.1f}")
-            if metrics_raw.get('optimal_saturated', False):
-                self.logger.warning(f"  ** SATURATED ({metrics_raw.get('optimal_saturation_frac', 0):.1%}) "
-                                    f"-- signal may be underestimated **")
-                alt = metrics_raw.get('best_non_saturated_angle')
+            if metrics_raw.get("optimal_saturated", False):
+                self.logger.warning(
+                    f"  ** SATURATED ({metrics_raw.get('optimal_saturation_frac', 0):.1%}) "
+                    f"-- signal may be underestimated **"
+                )
+                alt = metrics_raw.get("best_non_saturated_angle")
                 if alt is not None:
-                    self.logger.info(f"  Best non-saturated: {alt:.2f} deg "
-                                    f"(signal={metrics_raw.get('best_non_saturated_signal', 0):.1f})")
+                    self.logger.info(
+                        f"  Best non-saturated: {alt:.2f} deg "
+                        f"(signal={metrics_raw.get('best_non_saturated_signal', 0):.1f})"
+                    )
 
-            self.logger.info(f"\nNORMALIZED DIFFERENCE [I(+)-I(-)]/[I(+)+I(-)]:")
+            self.logger.info("\nNORMALIZED DIFFERENCE [I(+)-I(-)]/[I(+)+I(-)]:")
             self.logger.info(f"  Optimal angle: {optimal_norm:.2f} degrees")
-            norm_mean = metrics_norm.get('norm_mean_signal', 0) * 100
-            norm_p95 = metrics_norm.get('norm_p95_signal', 0) * 100
+            norm_mean = metrics_norm.get("norm_mean_signal", 0) * 100
+            norm_p95 = metrics_norm.get("norm_p95_signal", 0) * 100
             self.logger.info(f"  Mean signal: {norm_mean:.2f}%")
             self.logger.info(f"  P95 signal: {norm_p95:.2f}%")
-            if metrics_norm.get('optimal_saturated', False):
-                self.logger.warning(f"  ** SATURATED ({metrics_norm.get('optimal_saturation_frac', 0):.1%}) "
-                                    f"-- signal may be underestimated **")
-                alt = metrics_norm.get('best_non_saturated_angle')
+            if metrics_norm.get("optimal_saturated", False):
+                self.logger.warning(
+                    f"  ** SATURATED ({metrics_norm.get('optimal_saturation_frac', 0):.1%}) "
+                    f"-- signal may be underestimated **"
+                )
+                alt = metrics_norm.get("best_non_saturated_angle")
                 if alt is not None:
-                    self.logger.info(f"  Best non-saturated: {alt:.2f} deg "
-                                    f"(signal={metrics_norm.get('best_non_saturated_signal', 0)*100:.2f}%)")
+                    self.logger.info(
+                        f"  Best non-saturated: {alt:.2f} deg "
+                        f"(signal={metrics_norm.get('best_non_saturated_signal', 0)*100:.2f}%)"
+                    )
 
             if optimal_raw == optimal_norm:
-                self.logger.info(f"\nBoth methods agree: optimal angle is {optimal_raw:.2f} degrees")
+                self.logger.info(
+                    f"\nBoth methods agree: optimal angle is {optimal_raw:.2f} degrees"
+                )
             else:
-                self.logger.info(f"\nMethods differ: raw={optimal_raw:.2f}, normalized={optimal_norm:.2f}")
+                self.logger.info(
+                    f"\nMethods differ: raw={optimal_raw:.2f}, normalized={optimal_norm:.2f}"
+                )
 
             # Sanity check
             zero_raw = self.birefringence_metrics.get(0.0, {})
             zero_norm = self.normalized_metrics.get(0.0, {})
             if zero_raw or zero_norm:
-                self.logger.info(f"\nSANITY CHECK (0 deg):")
+                self.logger.info("\nSANITY CHECK (0 deg):")
                 if zero_raw:
                     self.logger.info(f"  Raw mean: {zero_raw.get('mean_signal', 0):.1f}")
                 if zero_norm:
-                    self.logger.info(f"  Normalized mean: {zero_norm.get('norm_mean_signal', 0)*100:.4f}%")
+                    self.logger.info(
+                        f"  Normalized mean: {zero_norm.get('norm_mean_signal', 0)*100:.4f}%"
+                    )
 
             # Generate outputs
             self.generate_visualization()
@@ -2021,7 +2182,7 @@ def run_birefringence_maximization_test(
     calibration_exposures: Dict[float, float] = None,
     target_intensity: int = 128,
     progress_callback: Optional[Callable[[int, int], None]] = None,
-    stage_move_callback: Optional[Callable[[], bool]] = None
+    stage_move_callback: Optional[Callable[[], bool]] = None,
 ) -> Optional[Path]:
     """
     Run birefringence maximization test programmatically.
@@ -2060,7 +2221,7 @@ def run_birefringence_maximization_test(
         calibration_exposures=calibration_exposures,
         target_intensity=target_intensity,
         progress_callback=progress_callback,
-        stage_move_callback=stage_move_callback
+        stage_move_callback=stage_move_callback,
     )
 
     return tester.run_test()
@@ -2071,7 +2232,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='PPM Birefringence Maximization Test',
+        description="PPM Birefringence Maximization Test",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -2092,41 +2253,63 @@ Examples:
 
   # Don't keep images (save disk space)
   python ppm_birefringence_maximization_test.py config.yml --no-keep-images
-"""
+""",
     )
 
-    parser.add_argument('config_yaml',
-                       help='Path to microscope configuration YAML file')
-    parser.add_argument('--output', '-o',
-                       help='Output directory for results')
-    parser.add_argument('--host', default='127.0.0.1',
-                       help='qp_server host address')
-    parser.add_argument('--port', type=int, default=5000,
-                       help='qp_server port')
-    parser.add_argument('--mode', choices=['interpolate', 'calibrate', 'fixed', 'noise_aware'],
-                       default='interpolate',
-                       help='Exposure mode: interpolate (use calibration points), '
-                            'calibrate (measure exposures first), '
-                            'fixed (same exposure for all angles), or '
-                            'noise_aware (quality presets per angle type)')
-    parser.add_argument('--exposure', type=float, default=None,
-                       help='Fixed exposure time in ms (required for --mode fixed)')
-    parser.add_argument('--min-angle', type=float, default=-10.0,
-                       help='Minimum angle in degrees (default: -10)')
-    parser.add_argument('--max-angle', type=float, default=10.0,
-                       help='Maximum angle in degrees (default: 10)')
-    parser.add_argument('--step', type=float, default=0.1,
-                       help='Angle step size in degrees (default: 0.1)')
-    parser.add_argument('--keep-images', dest='keep_images', action='store_true',
-                       default=True,
-                       help='Keep acquired .tif images (default)')
-    parser.add_argument('--no-keep-images', dest='keep_images', action='store_false',
-                       help='Delete .tif images after analysis')
-    parser.add_argument('--calibration-exposures', type=str, default=None,
-                       help='JSON dict of calibration exposures, e.g. \'{"7.0": 25.0}\'')
-    parser.add_argument('--target-intensity', type=int, default=128,
-                       help='Target median intensity for background calibration (0-255, default: 128). '
-                            'Lower values for brighter samples, higher for darker samples.')
+    parser.add_argument("config_yaml", help="Path to microscope configuration YAML file")
+    parser.add_argument("--output", "-o", help="Output directory for results")
+    parser.add_argument("--host", default="127.0.0.1", help="qp_server host address")
+    parser.add_argument("--port", type=int, default=5000, help="qp_server port")
+    parser.add_argument(
+        "--mode",
+        choices=["interpolate", "calibrate", "fixed", "noise_aware"],
+        default="interpolate",
+        help="Exposure mode: interpolate (use calibration points), "
+        "calibrate (measure exposures first), "
+        "fixed (same exposure for all angles), or "
+        "noise_aware (quality presets per angle type)",
+    )
+    parser.add_argument(
+        "--exposure",
+        type=float,
+        default=None,
+        help="Fixed exposure time in ms (required for --mode fixed)",
+    )
+    parser.add_argument(
+        "--min-angle", type=float, default=-10.0, help="Minimum angle in degrees (default: -10)"
+    )
+    parser.add_argument(
+        "--max-angle", type=float, default=10.0, help="Maximum angle in degrees (default: 10)"
+    )
+    parser.add_argument(
+        "--step", type=float, default=0.1, help="Angle step size in degrees (default: 0.1)"
+    )
+    parser.add_argument(
+        "--keep-images",
+        dest="keep_images",
+        action="store_true",
+        default=True,
+        help="Keep acquired .tif images (default)",
+    )
+    parser.add_argument(
+        "--no-keep-images",
+        dest="keep_images",
+        action="store_false",
+        help="Delete .tif images after analysis",
+    )
+    parser.add_argument(
+        "--calibration-exposures",
+        type=str,
+        default=None,
+        help="JSON dict of calibration exposures, e.g. '{\"7.0\": 25.0}'",
+    )
+    parser.add_argument(
+        "--target-intensity",
+        type=int,
+        default=128,
+        help="Target median intensity for background calibration (0-255, default: 128). "
+        "Lower values for brighter samples, higher for darker samples.",
+    )
 
     args = parser.parse_args()
 
@@ -2158,7 +2341,7 @@ Examples:
         fixed_exposure_ms=args.exposure,
         keep_images=args.keep_images,
         calibration_exposures=calibration_exposures,
-        target_intensity=args.target_intensity
+        target_intensity=args.target_intensity,
     )
 
     if result:

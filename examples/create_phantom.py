@@ -10,7 +10,7 @@ This creates an image similar to a real calibration slide with:
 """
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from skimage import color
 import cv2
 
@@ -103,52 +103,68 @@ def create_calibration_phantom(
             points = []
 
             # Inner point (center side) - nearly a point
-            points.append([
-                cx + r_inner * np.cos(angle_rad) + w_inner * np.cos(perp_rad),
-                cy - r_inner * np.sin(angle_rad) - w_inner * np.sin(perp_rad)
-            ])
+            points.append(
+                [
+                    cx + r_inner * np.cos(angle_rad) + w_inner * np.cos(perp_rad),
+                    cy - r_inner * np.sin(angle_rad) - w_inner * np.sin(perp_rad),
+                ]
+            )
 
             # Mid1 point (1/3 out) - left side
-            points.append([
-                cx + r_mid1 * np.cos(angle_rad) + w_mid1 * np.cos(perp_rad),
-                cy - r_mid1 * np.sin(angle_rad) - w_mid1 * np.sin(perp_rad)
-            ])
+            points.append(
+                [
+                    cx + r_mid1 * np.cos(angle_rad) + w_mid1 * np.cos(perp_rad),
+                    cy - r_mid1 * np.sin(angle_rad) - w_mid1 * np.sin(perp_rad),
+                ]
+            )
 
             # Mid2 point (2/3 out) - left side
-            points.append([
-                cx + r_mid2 * np.cos(angle_rad) + w_mid2 * np.cos(perp_rad),
-                cy - r_mid2 * np.sin(angle_rad) - w_mid2 * np.sin(perp_rad)
-            ])
+            points.append(
+                [
+                    cx + r_mid2 * np.cos(angle_rad) + w_mid2 * np.cos(perp_rad),
+                    cy - r_mid2 * np.sin(angle_rad) - w_mid2 * np.sin(perp_rad),
+                ]
+            )
 
             # Outer point - left side
-            points.append([
-                cx + r_outer * np.cos(angle_rad) + w_outer * np.cos(perp_rad),
-                cy - r_outer * np.sin(angle_rad) - w_outer * np.sin(perp_rad)
-            ])
+            points.append(
+                [
+                    cx + r_outer * np.cos(angle_rad) + w_outer * np.cos(perp_rad),
+                    cy - r_outer * np.sin(angle_rad) - w_outer * np.sin(perp_rad),
+                ]
+            )
 
             # Outer point - right side
-            points.append([
-                cx + r_outer * np.cos(angle_rad) - w_outer * np.cos(perp_rad),
-                cy - r_outer * np.sin(angle_rad) + w_outer * np.sin(perp_rad)
-            ])
+            points.append(
+                [
+                    cx + r_outer * np.cos(angle_rad) - w_outer * np.cos(perp_rad),
+                    cy - r_outer * np.sin(angle_rad) + w_outer * np.sin(perp_rad),
+                ]
+            )
 
             # Mid2 point - right side
-            points.append([
-                cx + r_mid2 * np.cos(angle_rad) - w_mid2 * np.cos(perp_rad),
-                cy - r_mid2 * np.sin(angle_rad) + w_mid2 * np.sin(perp_rad)
-            ])
+            points.append(
+                [
+                    cx + r_mid2 * np.cos(angle_rad) - w_mid2 * np.cos(perp_rad),
+                    cy - r_mid2 * np.sin(angle_rad) + w_mid2 * np.sin(perp_rad),
+                ]
+            )
 
             # Mid1 point - right side
-            points.append([
-                cx + r_mid1 * np.cos(angle_rad) - w_mid1 * np.cos(perp_rad),
-                cy - r_mid1 * np.sin(angle_rad) + w_mid1 * np.sin(perp_rad)
-            ])
+            points.append(
+                [
+                    cx + r_mid1 * np.cos(angle_rad) - w_mid1 * np.cos(perp_rad),
+                    cy - r_mid1 * np.sin(angle_rad) + w_mid1 * np.sin(perp_rad),
+                ]
+            )
 
             # Inner point - right side
-            points.append([
-                cx + r_inner * np.cos(angle_rad) - w_inner * np.cos(perp_rad),
-                cy - r_inner * np.sin(angle_rad) + w_inner * np.sin(perp_rad)
-            ])
+            points.append(
+                [
+                    cx + r_inner * np.cos(angle_rad) - w_inner * np.cos(perp_rad),
+                    cy - r_inner * np.sin(angle_rad) + w_inner * np.sin(perp_rad),
+                ]
+            )
 
             # Draw filled polygon
             pts = np.array(points, dtype=np.int32)
@@ -218,7 +234,7 @@ def _add_gratings(
                 (line_x, grating_y),
                 (line_x, grating_y + grating_height),
                 rgb_tuple,
-                thickness=max(1, spacing // 3)
+                thickness=max(1, spacing // 3),
             )
 
         # Add number label above grating
@@ -233,7 +249,7 @@ def _add_gratings(
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             rgb_tuple,
-            2
+            2,
         )
 
 
@@ -270,7 +286,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Create PPM calibration phantom")
     parser.add_argument("-o", "--output", default="phantom.png", help="Output file path")
     parser.add_argument("--width", type=int, default=924, help="Image width (default: 924 for 2x)")
-    parser.add_argument("--height", type=int, default=532, help="Image height (default: 532 for 2x)")
+    parser.add_argument(
+        "--height", type=int, default=532, help="Image height (default: 532 for 2x)"
+    )
     parser.add_argument("--spokes", type=int, default=36, help="Number of spoke orientations")
     parser.add_argument("--no-gratings", action="store_true", help="Omit test gratings")
     parser.add_argument("--simple", action="store_true", help="Create simple square sunburst")

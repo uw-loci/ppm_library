@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import numpy as np
-from scipy import ndimage
 from skimage import color
 from skimage.io import imread
 
@@ -199,10 +198,7 @@ class PPMImage:
     @property
     def valid_mask(self) -> np.ndarray:
         """Boolean mask of pixels with sufficient saturation and value."""
-        return (
-            (self.saturation > self.saturation_threshold) &
-            (self.value > self.value_threshold)
-        )
+        return (self.saturation > self.saturation_threshold) & (self.value > self.value_threshold)
 
     def to_angle_map(
         self,
@@ -222,9 +218,7 @@ class PPMImage:
         from ppm_library.calibration.radial import RadialCalibrationResult
 
         if not isinstance(calibration, RadialCalibrationResult):
-            raise TypeError(
-                f"Expected RadialCalibrationResult, got {type(calibration).__name__}"
-            )
+            raise TypeError(f"Expected RadialCalibrationResult, got {type(calibration).__name__}")
 
         # Determine valid pixels
         valid = self.valid_mask.copy()
@@ -309,6 +303,7 @@ def _load_image(path: Union[str, Path]) -> np.ndarray:
     # Try tifffile first for TIFF images
     try:
         import tifffile
+
         image = tifffile.imread(str(path))
     except Exception:
         image = imread(str(path))

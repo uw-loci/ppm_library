@@ -26,10 +26,6 @@ Standalone usage:
     >>> print(f"Valid pixels: {result['n_valid']}")
 """
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
-
 import numpy as np
 from skimage import color
 
@@ -130,14 +126,14 @@ def compute_angles_from_rgb(
         angles[valid_mask] = calibration.hue_to_angle(hue[valid_mask])
 
     return {
-        'angles': angles,
-        'valid_mask': valid_mask,
-        'hue': hue,
-        'saturation': saturation,
-        'value': value,
-        'n_valid': int(np.sum(valid_mask)),
-        'n_clipped': n_clipped,
-        'n_dark_excluded': n_dark,
+        "angles": angles,
+        "valid_mask": valid_mask,
+        "hue": hue,
+        "saturation": saturation,
+        "value": value,
+        "n_valid": int(np.sum(valid_mask)),
+        "n_clipped": n_clipped,
+        "n_dark_excluded": n_dark,
     }
 
 
@@ -204,7 +200,10 @@ def compute_masked_angles(
     """
     # Compute angles
     angle_result = compute_angles_from_rgb(
-        rgb_array, calibration, saturation_threshold, value_threshold,
+        rgb_array,
+        calibration,
+        saturation_threshold,
+        value_threshold,
         min_rgb_intensity=min_rgb_intensity,
     )
 
@@ -212,28 +211,28 @@ def compute_masked_angles(
     ppm_mask = compute_ppm_positive_mask(biref_array, biref_threshold)
 
     # Verify dimensions match
-    if ppm_mask.shape != angle_result['valid_mask'].shape:
+    if ppm_mask.shape != angle_result["valid_mask"].shape:
         raise ValueError(
             f"Dimension mismatch: RGB region {angle_result['valid_mask'].shape} "
             f"vs biref region {ppm_mask.shape}"
         )
 
     # Combined mask: must be both color-valid AND PPM-positive
-    combined = angle_result['valid_mask'] & ppm_mask
+    combined = angle_result["valid_mask"] & ppm_mask
 
     # Mask angles
-    masked_angles = angle_result['angles'].copy()
+    masked_angles = angle_result["angles"].copy()
     masked_angles[~combined] = np.nan
 
     return {
-        'angles': masked_angles,
-        'combined_mask': combined,
-        'ppm_positive_mask': ppm_mask,
-        'color_valid_mask': angle_result['valid_mask'],
-        'hue': angle_result.get('hue'),
-        'n_combined': int(np.sum(combined)),
-        'n_ppm_positive': int(np.sum(ppm_mask)),
-        'n_color_valid': angle_result['n_valid'],
+        "angles": masked_angles,
+        "combined_mask": combined,
+        "ppm_positive_mask": ppm_mask,
+        "color_valid_mask": angle_result["valid_mask"],
+        "hue": angle_result.get("hue"),
+        "n_combined": int(np.sum(combined)),
+        "n_ppm_positive": int(np.sum(ppm_mask)),
+        "n_color_valid": angle_result["n_valid"],
     }
 
 
@@ -261,10 +260,10 @@ def compute_angle_histogram(angles, mask=None, bins=18):
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
 
     return {
-        'counts': counts,
-        'bin_edges': bin_edges,
-        'bin_centers': bin_centers,
-        'n_pixels': int(len(valid_angles)),
+        "counts": counts,
+        "bin_edges": bin_edges,
+        "bin_centers": bin_centers,
+        "n_pixels": int(len(valid_angles)),
     }
 
 
@@ -299,12 +298,12 @@ def compute_circular_statistics(angles, mask=None):
     n = len(valid)
     if n == 0:
         return {
-            'circular_mean': np.nan,
-            'circular_std': np.nan,
-            'resultant_length': np.nan,
-            'n_pixels': 0,
-            'arithmetic_mean': np.nan,
-            'arithmetic_std': np.nan,
+            "circular_mean": np.nan,
+            "circular_std": np.nan,
+            "resultant_length": np.nan,
+            "n_pixels": 0,
+            "arithmetic_mean": np.nan,
+            "arithmetic_std": np.nan,
         }
 
     # Double angles for axial data (0-180 -> 0-360)
@@ -326,12 +325,12 @@ def compute_circular_statistics(angles, mask=None):
         circular_std = np.rad2deg(np.sqrt(-2.0 * np.log(R))) / 2.0
 
     return {
-        'circular_mean': float(circular_mean),
-        'circular_std': float(circular_std),
-        'resultant_length': float(R),
-        'n_pixels': n,
-        'arithmetic_mean': float(np.mean(valid)),
-        'arithmetic_std': float(np.std(valid)),
+        "circular_mean": float(circular_mean),
+        "circular_std": float(circular_std),
+        "resultant_length": float(R),
+        "n_pixels": n,
+        "arithmetic_mean": float(np.mean(valid)),
+        "arithmetic_std": float(np.std(valid)),
     }
 
 
@@ -383,12 +382,15 @@ def analyze_region(
     if foreground_mask is not None:
         # External foreground mask replaces biref-based masking
         angle_result = compute_angles_from_rgb(
-            rgb_array, calibration, saturation_threshold, value_threshold,
+            rgb_array,
+            calibration,
+            saturation_threshold,
+            value_threshold,
             min_rgb_intensity=min_rgb_intensity,
         )
-        angles = angle_result['angles']
-        hue_array = angle_result.get('hue')
-        color_valid_mask = angle_result['valid_mask']
+        angles = angle_result["angles"]
+        hue_array = angle_result.get("hue")
+        color_valid_mask = angle_result["valid_mask"]
         fg = foreground_mask.astype(bool)
         if fg.shape != color_valid_mask.shape:
             raise ValueError(
@@ -398,37 +400,44 @@ def analyze_region(
         ppm_positive_mask = fg
     elif biref_array is not None:
         masked = compute_masked_angles(
-            rgb_array, biref_array, calibration,
-            biref_threshold, saturation_threshold, value_threshold,
+            rgb_array,
+            biref_array,
+            calibration,
+            biref_threshold,
+            saturation_threshold,
+            value_threshold,
             min_rgb_intensity=min_rgb_intensity,
         )
-        angles = masked['angles']
-        mask = masked['combined_mask']
-        ppm_positive_mask = masked['ppm_positive_mask']
-        color_valid_mask = masked['color_valid_mask']
-        hue_array = masked.get('hue')
+        angles = masked["angles"]
+        mask = masked["combined_mask"]
+        ppm_positive_mask = masked["ppm_positive_mask"]
+        color_valid_mask = masked["color_valid_mask"]
+        hue_array = masked.get("hue")
     else:
         angle_result = compute_angles_from_rgb(
-            rgb_array, calibration, saturation_threshold, value_threshold,
+            rgb_array,
+            calibration,
+            saturation_threshold,
+            value_threshold,
             min_rgb_intensity=min_rgb_intensity,
         )
-        angles = angle_result['angles']
-        hue_array = angle_result.get('hue')
-        mask = angle_result['valid_mask']
+        angles = angle_result["angles"]
+        hue_array = angle_result.get("hue")
+        mask = angle_result["valid_mask"]
         ppm_positive_mask = None
-        color_valid_mask = angle_result['valid_mask']
+        color_valid_mask = angle_result["valid_mask"]
 
     histogram = compute_angle_histogram(angles, mask, bins=histogram_bins)
     stats = compute_circular_statistics(angles, mask)
 
     return {
-        'angles': angles,
-        'mask': mask,
-        'histogram': histogram,
-        'stats': stats,
-        'ppm_positive_mask': ppm_positive_mask,
-        'color_valid_mask': color_valid_mask,
-        'hue': hue_array,
+        "angles": angles,
+        "mask": mask,
+        "histogram": histogram,
+        "stats": stats,
+        "ppm_positive_mask": ppm_positive_mask,
+        "color_valid_mask": color_valid_mask,
+        "hue": hue_array,
     }
 
 
@@ -462,8 +471,8 @@ def filter_angles_by_range(angles, mask, angle_low, angle_high):
     n_valid = int(np.sum(mask & ~np.isnan(angles)))
 
     return {
-        'range_mask': range_mask,
-        'n_in_range': n_in_range,
-        'n_valid': n_valid,
-        'fraction_in_range': n_in_range / n_valid if n_valid > 0 else 0.0,
+        "range_mask": range_mask,
+        "n_in_range": n_in_range,
+        "n_valid": n_valid,
+        "fraction_in_range": n_in_range / n_valid if n_valid > 0 else 0.0,
     }

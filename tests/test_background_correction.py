@@ -14,7 +14,9 @@ class TestCalculateBackgroundColorFromMode:
 
     def test_background_detection_uniform_image(self, uniform_background_image):
         """Test background detection on uniform white background."""
-        bg_color, confidence = BackgroundCorrectionUtils.calculate_background_color_from_mode(uniform_background_image)
+        bg_color, confidence = BackgroundCorrectionUtils.calculate_background_color_from_mode(
+            uniform_background_image
+        )
 
         # Should detect the uniform background value
         assert bg_color is not None
@@ -23,7 +25,9 @@ class TestCalculateBackgroundColorFromMode:
 
     def test_background_detection_with_tissue(self, synthetic_raw_image):
         """Test background detection on image with tissue and background."""
-        bg_color, confidence = BackgroundCorrectionUtils.calculate_background_color_from_mode(synthetic_raw_image)
+        bg_color, confidence = BackgroundCorrectionUtils.calculate_background_color_from_mode(
+            synthetic_raw_image
+        )
 
         assert bg_color is not None
         assert np.isfinite(bg_color)
@@ -31,7 +35,9 @@ class TestCalculateBackgroundColorFromMode:
 
     def test_background_detection_returns_tuple(self, uniform_background_image):
         """Test that function returns (color, confidence) tuple."""
-        result = BackgroundCorrectionUtils.calculate_background_color_from_mode(uniform_background_image)
+        result = BackgroundCorrectionUtils.calculate_background_color_from_mode(
+            uniform_background_image
+        )
 
         assert isinstance(result, tuple)
         assert len(result) == 2
@@ -45,7 +51,9 @@ class TestCalculateBackgroundColorFromMode:
         # Image with high variation, no clear background mode
         varied_image = np.random.randint(0, 65535, (256, 256), dtype=np.uint16)
 
-        bg_color, confidence = BackgroundCorrectionUtils.calculate_background_color_from_mode(varied_image)
+        bg_color, confidence = BackgroundCorrectionUtils.calculate_background_color_from_mode(
+            varied_image
+        )
 
         # Confidence should be lower for varied images
         assert confidence < 0.9
@@ -54,15 +62,10 @@ class TestCalculateBackgroundColorFromMode:
 class TestApplyFlatFieldCorrection:
     """Test flat-field correction (background correction)."""
 
-    def test_divide_method_basic(
-        self, synthetic_raw_image, synthetic_background_image
-    ):
+    def test_divide_method_basic(self, synthetic_raw_image, synthetic_background_image):
         """Test basic divide method for flat-field correction."""
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image,
-            synthetic_background_image,
-            method='divide',
-            scaling_factor=1.0
+            synthetic_raw_image, synthetic_background_image, method="divide", scaling_factor=1.0
         )
 
         # Check output properties
@@ -73,15 +76,10 @@ class TestApplyFlatFieldCorrection:
         assert np.all(corrected >= 0)
         assert np.all(corrected <= 65535)  # uint16 max
 
-    def test_subtract_method_basic(
-        self, synthetic_raw_image, synthetic_background_image
-    ):
+    def test_subtract_method_basic(self, synthetic_raw_image, synthetic_background_image):
         """Test basic subtract method for background correction."""
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image,
-            synthetic_background_image,
-            method='subtract',
-            scaling_factor=1.0
+            synthetic_raw_image, synthetic_background_image, method="subtract", scaling_factor=1.0
         )
 
         assert corrected.shape == synthetic_raw_image.shape
@@ -90,16 +88,11 @@ class TestApplyFlatFieldCorrection:
         # Should not have negative values (clipped to 0)
         assert np.all(corrected >= 0)
 
-    def test_divide_removes_vignetting(
-        self, synthetic_raw_image, synthetic_background_image
-    ):
+    def test_divide_removes_vignetting(self, synthetic_raw_image, synthetic_background_image):
         """Test that divide method reduces vignetting effect."""
         # Apply correction
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image,
-            synthetic_background_image,
-            method='divide',
-            scaling_factor=1.0
+            synthetic_raw_image, synthetic_background_image, method="divide", scaling_factor=1.0
         )
 
         # Vignetting causes lower values at edges
@@ -118,22 +111,14 @@ class TestApplyFlatFieldCorrection:
 
         assert after_diff < before_diff
 
-    def test_scaling_factor_effect(
-        self, synthetic_raw_image, synthetic_background_image
-    ):
+    def test_scaling_factor_effect(self, synthetic_raw_image, synthetic_background_image):
         """Test that scaling factor affects output intensity."""
         corrected_1x = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image,
-            synthetic_background_image,
-            method='divide',
-            scaling_factor=1.0
+            synthetic_raw_image, synthetic_background_image, method="divide", scaling_factor=1.0
         )
 
         corrected_2x = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image,
-            synthetic_background_image,
-            method='divide',
-            scaling_factor=2.0
+            synthetic_raw_image, synthetic_background_image, method="divide", scaling_factor=2.0
         )
 
         # 2x scaling should produce brighter result
@@ -150,11 +135,7 @@ class TestApplyFlatFieldCorrection:
 
         # Should not crash or produce inf/nan
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image,
-            zero_background,
-            method='divide',
-            scaling_factor=1.0,
-            epsilon=1.0
+            synthetic_raw_image, zero_background, method="divide", scaling_factor=1.0, epsilon=1.0
         )
 
         assert np.all(np.isfinite(corrected))
@@ -163,18 +144,15 @@ class TestApplyFlatFieldCorrection:
     def test_shape_mismatch_handling(self, synthetic_raw_image):
         """Test handling of transposed or mismatched background dimensions."""
         # Transposed background (common issue)
-        background_transposed = np.ones(
-            (synthetic_raw_image.shape[1], synthetic_raw_image.shape[0]),
-            dtype=np.uint16
-        ) * 15000
+        background_transposed = (
+            np.ones((synthetic_raw_image.shape[1], synthetic_raw_image.shape[0]), dtype=np.uint16)
+            * 15000
+        )
 
         # Should handle transpose automatically or raise clear error
         try:
             corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-                synthetic_raw_image,
-                background_transposed,
-                method='divide',
-                scaling_factor=1.0
+                synthetic_raw_image, background_transposed, method="divide", scaling_factor=1.0
             )
             # If it succeeds, check output is valid
             assert corrected.shape == synthetic_raw_image.shape
@@ -192,10 +170,7 @@ class TestApplyFlatFieldCorrectionEdgeCases:
         bg_uint8 = np.random.randint(100, 250, (256, 256), dtype=np.uint8)
 
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            raw_uint8,
-            bg_uint8,
-            method='divide',
-            scaling_factor=1.0
+            raw_uint8, bg_uint8, method="divide", scaling_factor=1.0
         )
 
         assert corrected.dtype == np.uint8
@@ -207,10 +182,7 @@ class TestApplyFlatFieldCorrectionEdgeCases:
 
         # Divide method should produce near-uniform result
         corrected_divide = BackgroundCorrectionUtils.apply_flat_field_correction(
-            image,
-            image.copy(),
-            method='divide',
-            scaling_factor=1.0
+            image, image.copy(), method="divide", scaling_factor=1.0
         )
 
         # Should be close to scaling_factor * mean
@@ -219,10 +191,7 @@ class TestApplyFlatFieldCorrectionEdgeCases:
         # Subtract method with identical images and scaling_factor=1.0 returns original
         # Formula: img - (bg - bg*scale) = img - (bg - bg*1.0) = img - 0 = img
         corrected_subtract = BackgroundCorrectionUtils.apply_flat_field_correction(
-            image,
-            image.copy(),
-            method='subtract',
-            scaling_factor=1.0
+            image, image.copy(), method="subtract", scaling_factor=1.0
         )
 
         # Should return approximately the same image
@@ -235,10 +204,7 @@ class TestApplyFlatFieldCorrectionEdgeCases:
 
         # This is the expected scenario
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            raw,
-            background,
-            method='divide',
-            scaling_factor=1.0
+            raw, background, method="divide", scaling_factor=1.0
         )
 
         assert np.all(np.isfinite(corrected))
@@ -250,10 +216,7 @@ class TestApplyFlatFieldCorrectionEdgeCases:
 
         # Unusual but should handle gracefully
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            raw,
-            background,
-            method='divide',
-            scaling_factor=1.0
+            raw, background, method="divide", scaling_factor=1.0
         )
 
         # Should not crash, may clip to max value
@@ -267,10 +230,7 @@ class TestApplyFlatFieldCorrectionEdgeCases:
 
         # With large scaling factor, might exceed uint16 max
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            raw,
-            background,
-            method='divide',
-            scaling_factor=5.0
+            raw, background, method="divide", scaling_factor=5.0
         )
 
         # Should clip to uint16 max
@@ -294,9 +254,7 @@ class TestValidateBackgroundImages:
         # Should validate successfully
         try:
             is_valid = BackgroundCorrectionUtils.validate_background_images(
-                str(bg_dir),
-                modality="ppm_20x",
-                required_angles=[0, 45, 90, 135]
+                str(bg_dir), modality="ppm_20x", required_angles=[0, 45, 90, 135]
             )
             assert is_valid is True
         except Exception:
@@ -315,9 +273,7 @@ class TestValidateBackgroundImages:
 
         try:
             is_valid = BackgroundCorrectionUtils.validate_background_images(
-                str(bg_dir),
-                modality="ppm_20x",
-                required_angles=[0, 45, 90, 135]
+                str(bg_dir), modality="ppm_20x", required_angles=[0, 45, 90, 135]
             )
             # Should indicate missing files
             assert is_valid is False or is_valid is None
@@ -336,9 +292,7 @@ class TestValidateBackgroundImages:
 
         try:
             is_valid = BackgroundCorrectionUtils.validate_background_images(
-                str(bg_dir),
-                modality="ppm_20x",
-                required_angles=[0, 45, 90, 135]
+                str(bg_dir), modality="ppm_20x", required_angles=[0, 45, 90, 135]
             )
             assert is_valid is False
         except (FileNotFoundError, ValueError):

@@ -19,10 +19,10 @@ from ppm_library.imaging.hue_correction import (
 )
 from ppm_library.imaging.writer import TifWriterUtils
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_rgb(height=64, width=64, r=128, g=64, b=64):
     """Create a uniform RGB uint8 image with the given channel values."""
@@ -55,8 +55,7 @@ class TestAngleMap:
         hue = np.full((h, w), 0.25)
         sat = np.full((h, w), 0.8)
         val = np.full((h, w), 0.9)
-        return AngleMap(angles=angles, valid_mask=valid, hue=hue,
-                        saturation=sat, value=val)
+        return AngleMap(angles=angles, valid_mask=valid, hue=hue, saturation=sat, value=val)
 
     def test_shape_property(self):
         am = self._make_angle_map(20, 30)
@@ -250,9 +249,7 @@ class TestHueShift:
         shifted = hue_shift(img, 0.0, apply_median_filter=False)
         # A 0-degree shift should leave the image essentially unchanged
         # (allow small rounding differences from float conversion)
-        np.testing.assert_allclose(
-            shifted.astype(np.float64), img.astype(np.float64), atol=2
-        )
+        np.testing.assert_allclose(shifted.astype(np.float64), img.astype(np.float64), atol=2)
 
     def test_rejects_non_rgb_input(self):
         gray = np.zeros((32, 32), dtype=np.uint8)
@@ -264,9 +261,7 @@ class TestHueShift:
         img = _make_saturated_rgb()
         shifted = hue_shift(img, 180.0, apply_median_filter=False)
         # 180 degrees in PPM hue space wraps hue by 1.0 (full circle)
-        np.testing.assert_allclose(
-            shifted.astype(np.float64), img.astype(np.float64), atol=2
-        )
+        np.testing.assert_allclose(shifted.astype(np.float64), img.astype(np.float64), atol=2)
 
 
 class TestComputeHueShiftFromReference:

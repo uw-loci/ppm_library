@@ -16,26 +16,24 @@ import numpy as np
 from scipy import ndimage, stats
 from skimage import color, morphology, measure
 from skimage.io import imread
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-
 
 # ROYGBIV color positions in hue space (0-1)
 # Red=0, Orange≈0.08, Yellow≈0.17, Green≈0.33, Blue≈0.58, Indigo≈0.67, Violet≈0.75, Red=1.0
 ROYGBIV_COLORS = [
-    (0.000, 'R', 'red'),
-    (0.083, 'O', 'orange'),
-    (0.167, 'Y', 'yellow'),
-    (0.333, 'G', 'green'),
-    (0.500, 'C', 'cyan'),
-    (0.583, 'B', 'blue'),
-    (0.667, 'I', 'indigo'),
-    (0.750, 'V', 'violet'),
-    (0.917, 'M', 'magenta'),
+    (0.000, "R", "red"),
+    (0.083, "O", "orange"),
+    (0.167, "Y", "yellow"),
+    (0.333, "G", "green"),
+    (0.500, "C", "cyan"),
+    (0.583, "B", "blue"),
+    (0.667, "I", "indigo"),
+    (0.750, "V", "violet"),
+    (0.917, "M", "magenta"),
 ]
 
 
-def add_hue_colorbar(ax, orientation='horizontal'):
+def add_hue_colorbar(ax, orientation="horizontal"):
     """Add a rainbow colorbar to indicate hue values.
 
     Args:
@@ -43,7 +41,7 @@ def add_hue_colorbar(ax, orientation='horizontal'):
         orientation: 'horizontal' or 'vertical'
     """
     # Create a gradient of hue values
-    if orientation == 'horizontal':
+    if orientation == "horizontal":
         gradient = np.linspace(0, 1, 256).reshape(1, -1)
     else:
         gradient = np.linspace(0, 1, 256).reshape(-1, 1)
@@ -69,13 +67,13 @@ def add_roygbiv_labels(ax, y_position=-0.12):
         ax.annotate(
             letter,
             xy=(hue, 0),
-            xycoords=('data', 'axes fraction'),
+            xycoords=("data", "axes fraction"),
             xytext=(0, -25),
-            textcoords='offset points',
-            ha='center',
-            va='top',
+            textcoords="offset points",
+            ha="center",
+            va="top",
             fontsize=10,
-            fontweight='bold',
+            fontweight="bold",
             color=color_name,
         )
 
@@ -100,15 +98,16 @@ def create_hue_axis_colorbar(ax):
     hsv[0, :, 2] = 1.0
     rgb = mcolors.hsv_to_rgb(hsv)
 
-    cbar_ax.imshow(rgb, aspect='auto', extent=[0, 1, 0, 1])
+    cbar_ax.imshow(rgb, aspect="auto", extent=[0, 1, 0, 1])
     cbar_ax.set_xlim(0, 1)
     cbar_ax.set_xticks([])
     cbar_ax.set_yticks([])
 
     # Add ROYGBIV labels
     for hue, letter, color_name in ROYGBIV_COLORS:
-        cbar_ax.text(hue, -0.5, letter, ha='center', va='top',
-                     fontsize=9, fontweight='bold', color='black')
+        cbar_ax.text(
+            hue, -0.5, letter, ha="center", va="top", fontsize=9, fontweight="bold", color="black"
+        )
 
     return cbar_ax
 
@@ -138,7 +137,7 @@ def add_shifted_hue_colorbar(ax, hue_offset: float) -> None:
     hsv[0, :, 2] = 1.0
     rgb = mcolors.hsv_to_rgb(hsv)
 
-    cbar_ax.imshow(rgb, aspect='auto', extent=[0, 1, 0, 1])
+    cbar_ax.imshow(rgb, aspect="auto", extent=[0, 1, 0, 1])
     cbar_ax.set_xlim(0, 1)
     cbar_ax.set_xticks([])
     cbar_ax.set_yticks([])
@@ -146,8 +145,16 @@ def add_shifted_hue_colorbar(ax, hue_offset: float) -> None:
     # Add shifted ROYGBIV labels
     for hue, letter, color_name in ROYGBIV_COLORS:
         shifted_pos = (hue - hue_offset) % 1.0
-        cbar_ax.text(shifted_pos, -0.5, letter, ha='center', va='top',
-                     fontsize=9, fontweight='bold', color='black')
+        cbar_ax.text(
+            shifted_pos,
+            -0.5,
+            letter,
+            ha="center",
+            va="top",
+            fontsize=9,
+            fontweight="bold",
+            color="black",
+        )
 
 
 def _circular_hue_mean(hue_values: np.ndarray) -> float:
@@ -173,7 +180,7 @@ def _circular_hue_std(hue_values: np.ndarray) -> float:
     theta = np.asarray(hue_values) * 2.0 * np.pi
     sin_mean = np.mean(np.sin(theta))
     cos_mean = np.mean(np.cos(theta))
-    R = np.sqrt(sin_mean ** 2 + cos_mean ** 2)
+    R = np.sqrt(sin_mean**2 + cos_mean**2)
     R = min(R, 1.0)  # numerical safety
     if R < 1e-10:
         return 1.0  # completely dispersed
@@ -183,6 +190,7 @@ def _circular_hue_std(hue_values: np.ndarray) -> float:
 @dataclass
 class RadialSample:
     """Data for a single radial sample."""
+
     angle: float  # Angle in degrees (0-180)
     hue_mean: float  # Circular mean hue value along the radial line
     hue_std: float  # Circular standard deviation of hue
@@ -340,6 +348,7 @@ class RadialCalibrationResult:
             dpi: DPI for saved images (default 150, ignored for interactive)
         """
         import matplotlib
+
         if output_path is not None:
             matplotlib.use("Agg")
         import matplotlib.pyplot as plt_local
@@ -361,33 +370,30 @@ class RadialCalibrationResult:
         ax1 = axes[0, 0]
         ax1.imshow(img_uint8)
         cy, cx = self.center
-        ax1.plot(cx, cy, 'w+', markersize=20, markeredgewidth=3)
+        ax1.plot(cx, cy, "w+", markersize=20, markeredgewidth=3)
         for sample in self.samples:
             angle_rad = np.radians(sample.angle)
             x_inner = cx + calibrator.radius_inner * np.cos(angle_rad)
             y_inner = cy - calibrator.radius_inner * np.sin(angle_rad)
             x_outer = cx + calibrator.radius_outer * np.cos(angle_rad)
             y_outer = cy - calibrator.radius_outer * np.sin(angle_rad)
-            ax1.plot([x_inner, x_outer], [y_inner, y_outer],
-                     'w-', alpha=0.5, linewidth=1)
-        rot_text = (f", rot={self.rotation:.1f} deg"
-                    if self.rotation != 0 else "")
-        ax1.set_title(
-            f"Radial Sampling ({len(self.samples)} spokes{rot_text})")
+            ax1.plot([x_inner, x_outer], [y_inner, y_outer], "w-", alpha=0.5, linewidth=1)
+        rot_text = f", rot={self.rotation:.1f} deg" if self.rotation != 0 else ""
+        ax1.set_title(f"Radial Sampling ({len(self.samples)} spokes{rot_text})")
         ax1.axis("off")
 
         # --- Plot 2: Foreground mask ---
         ax2 = axes[0, 1]
         hsv_img = skcolor.rgb2hsv(img_uint8)
-        foreground_mask = (
-            (hsv_img[:, :, 1] > calibrator.saturation_threshold)
-            & (hsv_img[:, :, 2] > calibrator.value_threshold)
+        foreground_mask = (hsv_img[:, :, 1] > calibrator.saturation_threshold) & (
+            hsv_img[:, :, 2] > calibrator.value_threshold
         )
         ax2.imshow(foreground_mask, cmap="gray")
-        ax2.plot(cx, cy, 'r+', markersize=15, markeredgewidth=2)
+        ax2.plot(cx, cy, "r+", markersize=15, markeredgewidth=2)
         ax2.set_title(
             f"Foreground Mask (sat>{calibrator.saturation_threshold}, "
-            f"val>{calibrator.value_threshold})")
+            f"val>{calibrator.value_threshold})"
+        )
         ax2.axis("off")
 
         # --- Plot 3: Color-coded scatter plot ---
@@ -402,30 +408,31 @@ class RadialCalibrationResult:
                     for sample in self.samples:
                         saturated_angles.add(sample.angle)
 
-        for i, (shifted_hue, angle) in enumerate(
-                zip(self.hue_values, self.angles)):
+        for i, (shifted_hue, angle) in enumerate(zip(self.hue_values, self.angles)):
             raw_hue = raw_hue_values[i]
             hsv_color = np.array([[[raw_hue, 1.0, 1.0]]])
             rgb_color = mcolors_local.hsv_to_rgb(hsv_color)[0, 0]
-            marker = ('X' if self.samples[i].angle in saturated_angles
-                      else 'o')
-            edge_color = ('red' if self.samples[i].angle in saturated_angles
-                          else 'black')
+            marker = "X" if self.samples[i].angle in saturated_angles else "o"
+            edge_color = "red" if self.samples[i].angle in saturated_angles else "black"
             ax3.scatter(
-                shifted_hue, angle,
-                s=100, c=[rgb_color], edgecolors=edge_color,
-                linewidths=2, marker=marker, zorder=5,
+                shifted_hue,
+                angle,
+                s=100,
+                c=[rgb_color],
+                edgecolors=edge_color,
+                linewidths=2,
+                marker=marker,
+                zorder=5,
             )
 
         # Regression line
         hue_line = np.linspace(0, 1, 100)
         predicted_angles = self.inv_slope * hue_line + self.inv_intercept
-        ax3.plot(hue_line, predicted_angles, 'r-', linewidth=2,
-                 label=f"R^2={self.r_squared:.4f}")
+        ax3.plot(hue_line, predicted_angles, "r-", linewidth=2, label=f"R^2={self.r_squared:.4f}")
         ax3.set_xlabel("Shifted Hue Value")
         ax3.set_ylabel("Angle (degrees)")
         ax3.set_title("Hue to Angle Calibration")
-        ax3.legend(loc='best')
+        ax3.legend(loc="best")
         ax3.grid(True, alpha=0.3)
         ax3.set_xlim(0, 1)
         ax3.set_ylim(0, 180)
@@ -463,7 +470,9 @@ class RadialCalibrationResult:
         info_text += "\nCalibration file saved for use in PPM analysis."
 
         ax4.text(
-            0.1, 0.9, info_text,
+            0.1,
+            0.9,
+            info_text,
             transform=ax4.transAxes,
             fontsize=10,
             verticalalignment="top",
@@ -552,6 +561,7 @@ class RadialCalibrator:
             dpi: DPI for the saved image (default 150)
         """
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt_local
         from skimage import color as skcolor, morphology as skmorph, measure
@@ -571,20 +581,15 @@ class RadialCalibrator:
         val = hsv[:, :, 2]
 
         # Create foreground mask using same thresholds as calibration
-        foreground_mask = (
-            (sat > self.saturation_threshold)
-            & (val > self.value_threshold)
-        )
+        foreground_mask = (sat > self.saturation_threshold) & (val > self.value_threshold)
 
         # Clean up mask
         try:
-            foreground_clean = skmorph.remove_small_objects(
-                foreground_mask, min_size=100)
-            foreground_clean = skmorph.remove_small_holes(
-                foreground_clean, area_threshold=500)
-            foreground_clean = ndi.median_filter(
-                foreground_clean.astype(np.uint8), size=5
-            ).astype(bool)
+            foreground_clean = skmorph.remove_small_objects(foreground_mask, min_size=100)
+            foreground_clean = skmorph.remove_small_holes(foreground_clean, area_threshold=500)
+            foreground_clean = ndi.median_filter(foreground_clean.astype(np.uint8), size=5).astype(
+                bool
+            )
         except Exception:
             foreground_clean = foreground_mask
 
@@ -599,8 +604,8 @@ class RadialCalibrator:
 
         axes[0, 1].imshow(foreground_mask, cmap="gray")
         axes[0, 1].set_title(
-            f"Foreground Mask (sat>{self.saturation_threshold}, "
-            f"val>{self.value_threshold})")
+            f"Foreground Mask (sat>{self.saturation_threshold}, " f"val>{self.value_threshold})"
+        )
         axes[0, 1].axis("off")
 
         axes[1, 0].imshow(labels, cmap="nipy_spectral")
@@ -608,8 +613,7 @@ class RadialCalibrator:
         axes[1, 0].axis("off")
 
         overlay = img_uint8.copy()
-        overlay[foreground_clean, 1] = np.minimum(
-            255, overlay[foreground_clean, 1] + 100)
+        overlay[foreground_clean, 1] = np.minimum(255, overlay[foreground_clean, 1] + 100)
         axes[1, 1].imshow(overlay)
         axes[1, 1].set_title("Overlay (detected regions highlighted)")
         axes[1, 1].axis("off")
@@ -693,6 +697,7 @@ class RadialCalibrator:
 
         try:
             import tifffile
+
             image = tifffile.imread(str(path))
         except Exception:
             image = imread(str(path))
@@ -720,6 +725,7 @@ class RadialCalibrator:
 
         try:
             import tifffile
+
             image = tifffile.imread(str(path))
         except Exception:
             image = imread(str(path))
@@ -761,7 +767,7 @@ class RadialCalibrator:
 
         total_sampled = 0
         saturated_count = 0
-        saturated_by_channel = {'R': 0, 'G': 0, 'B': 0}
+        saturated_by_channel = {"R": 0, "G": 0, "B": 0}
 
         base_angles = np.linspace(0, 180, self.n_spokes, endpoint=False)
 
@@ -778,11 +784,11 @@ class RadialCalibrator:
                     pixel = raw_image[y, x]
 
                     if pixel[0] >= max_val:
-                        saturated_by_channel['R'] += 1
+                        saturated_by_channel["R"] += 1
                     if pixel[1] >= max_val:
-                        saturated_by_channel['G'] += 1
+                        saturated_by_channel["G"] += 1
                     if pixel[2] >= max_val:
-                        saturated_by_channel['B'] += 1
+                        saturated_by_channel["B"] += 1
 
                     if np.any(pixel >= max_val):
                         saturated_count += 1
@@ -1027,9 +1033,7 @@ class RadialCalibrator:
                     continue
 
                 # Run full sampling pipeline for this candidate center
-                samples, rotation = self._radial_sample(
-                    hue, saturation, value, (cy, cx)
-                )
+                samples, rotation = self._radial_sample(hue, saturation, value, (cy, cx))
 
                 if len(samples) < 3:
                     continue
@@ -1084,7 +1088,7 @@ class RadialCalibrator:
         rotation_steps = np.linspace(
             -self.rotation_search_degrees,
             self.rotation_search_degrees,
-            21  # Test 21 rotations within range
+            21,  # Test 21 rotations within range
         )
 
         for rotation in rotation_steps:
@@ -1126,12 +1130,10 @@ class RadialCalibrator:
             globally_rotated = angle + best_rotation
 
             # Fine search around globally rotated position
-            best_local_std = float('inf')
+            best_local_std = float("inf")
             best_local_angle = globally_rotated
             best_local_hue_samples = None
-            local_steps = np.linspace(
-                -local_search_range, local_search_range, 21
-            )
+            local_steps = np.linspace(-local_search_range, local_search_range, 21)
 
             for local_offset in local_steps:
                 test_angle = globally_rotated + local_offset
@@ -1143,8 +1145,10 @@ class RadialCalibrator:
                     y = int(center_y - r * np.sin(angle_rad))
 
                     if 0 <= y < h and 0 <= x < w:
-                        if (saturation[y, x] > self.saturation_threshold and
-                            value[y, x] > self.value_threshold):
+                        if (
+                            saturation[y, x] > self.saturation_threshold
+                            and value[y, x] > self.value_threshold
+                        ):
                             local_hues.append(hue[y, x])
 
                 # Require enough samples to get a reliable circular std
@@ -1164,8 +1168,10 @@ class RadialCalibrator:
                     x = int(center_x + r * np.cos(angle_rad))
                     y = int(center_y - r * np.sin(angle_rad))
                     if 0 <= y < h and 0 <= x < w:
-                        if (saturation[y, x] > self.saturation_threshold and
-                            value[y, x] > self.value_threshold):
+                        if (
+                            saturation[y, x] > self.saturation_threshold
+                            and value[y, x] > self.value_threshold
+                        ):
                             fallback_hues.append(hue[y, x])
                 if len(fallback_hues) >= self.min_samples_per_angle:
                     best_local_hue_samples = fallback_hues

@@ -5,7 +5,7 @@ Provides functions for correcting hue values to account for white balance
 differences and other systematic shifts between images.
 """
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import numpy as np
 from scipy import ndimage
@@ -182,9 +182,7 @@ def apply_gaussian_smoothing(
     # Apply Gaussian filter to each channel
     smoothed = np.zeros_like(image, dtype=np.float64)
     for c in range(3):
-        smoothed[:, :, c] = filters.gaussian(
-            image[:, :, c].astype(np.float64), sigma=sigma
-        )
+        smoothed[:, :, c] = filters.gaussian(image[:, :, c].astype(np.float64), sigma=sigma)
 
     # Convert back to uint8
     if image.dtype == np.uint8:

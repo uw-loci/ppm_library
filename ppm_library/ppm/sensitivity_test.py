@@ -12,22 +12,16 @@ This script leverages existing utilities from:
 - qp_server.py: Server command protocol
 """
 
-import sys
-import os
-import socket
-import struct
 import time
 import json
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 import logging
-import yaml
 
 # Import from modular packages
 from microscope_command_server.client.client import QuPathTestClient
-from microscope_command_server.server.protocol import ExtendedCommand
 from microscope_control.config.manager import ConfigManager
 from ppm_library.ppm.polarizer_calibration import PolarizerCalibrationUtils
 from ppm_library.imaging.background import BackgroundCorrectionUtils
@@ -35,9 +29,12 @@ from ppm_library.imaging.background import BackgroundCorrectionUtils
 # Import the analysis module from same package
 try:
     from ppm_library.ppm.sensitivity_analysis import PPMRotationAnalyzer
+
     ANALYZER_AVAILABLE = True
 except ImportError as e:
-    logging.getLogger(__name__).debug("PPM rotation analyzer not available (%s). Analysis will be skipped.", e)
+    logging.getLogger(__name__).debug(
+        "PPM rotation analyzer not available (%s). Analysis will be skipped.", e
+    )
     ANALYZER_AVAILABLE = False
 
 
@@ -59,13 +56,15 @@ class PPMRotationSensitivityTester:
         90.0: 0.57,
     }
 
-    def __init__(self,
-                 config_yaml: str,
-                 output_dir: str = None,
-                 host: str = "127.0.0.1",
-                 port: int = 5000,
-                 angle_exposures: Dict[float, float] = None,
-                 keep_images: bool = True):
+    def __init__(
+        self,
+        config_yaml: str,
+        output_dir: str = None,
+        host: str = "127.0.0.1",
+        port: int = 5000,
+        angle_exposures: Dict[float, float] = None,
+        keep_images: bool = True,
+    ):
         """
         Initialize the tester with configuration and connection parameters.
 
@@ -86,7 +85,11 @@ class PPMRotationSensitivityTester:
         if output_dir is None:
             # Use the directory containing the config YAML as the base
             config_dir = self.config_yaml.parent
-            self.output_dir = config_dir / "ppm_sensitivity_tests" / f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            self.output_dir = (
+                config_dir
+                / "ppm_sensitivity_tests"
+                / f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
         else:
             self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -111,8 +114,9 @@ class PPMRotationSensitivityTester:
         self.acquired_images = {}
 
         # Standard PPM angles from config or defaults
-        self.standard_angles = self.config.get('ppm', {}).get('angles',
-            [0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77, 84, 91])
+        self.standard_angles = self.config.get("ppm", {}).get(
+            "angles", [0, 7, 14, 21, 28, 35, 42, 49, 56, 63, 70, 77, 84, 91]
+        )
 
         # Override angle exposures if provided
         if angle_exposures:
@@ -122,7 +126,7 @@ class PPMRotationSensitivityTester:
         # Load imaging profile exposures if available (for reference only)
         self.imaging_profile_exposures = self._load_imaging_profile_exposures()
 
-        self.logger.info(f"PPM Rotation Sensitivity Tester initialized")
+        self.logger.info("PPM Rotation Sensitivity Tester initialized")
         self.logger.info(f"Config: {self.config_yaml}")
         self.logger.info(f"Output: {self.output_dir}")
         self.logger.info(f"Angle exposures (fixed, no adaptive): {self.ANGLE_EXPOSURES_MS}")
@@ -145,20 +149,20 @@ class PPMRotationSensitivityTester:
                 imgproc = self.config_manager.load_config_file(str(imgproc_file))
 
                 # Get current objective/detector from main config
-                objective = self.config.get('objective', 'LOCI_OBJECTIVE_OLYMPUS_20X_POL_001')
-                detector = self.config.get('detector', 'LOCI_DETECTOR_TELEDYNE_001')
+                objective = self.config.get("objective", "LOCI_OBJECTIVE_OLYMPUS_20X_POL_001")
+                detector = self.config.get("detector", "LOCI_DETECTOR_TELEDYNE_001")
 
                 # Navigate to exposures
-                profiles = imgproc.get('imaging_profiles', {}).get('ppm', {})
+                profiles = imgproc.get("imaging_profiles", {}).get("ppm", {})
                 obj_profile = profiles.get(objective, {})
                 det_profile = obj_profile.get(detector, {})
-                exp_config = det_profile.get('exposures_ms', {})
+                exp_config = det_profile.get("exposures_ms", {})
 
                 # Extract exposures (handle both simple and per-channel formats)
-                for category in ['negative', 'crossed', 'positive', 'uncrossed']:
+                for category in ["negative", "crossed", "positive", "uncrossed"]:
                     val = exp_config.get(category)
                     if isinstance(val, dict):
-                        exposures[category] = val.get('all', list(val.values())[0])
+                        exposures[category] = val.get("all", list(val.values())[0])
                     elif val is not None:
                         exposures[category] = float(val)
 
@@ -220,6 +224,7 @@ class PPMRotationSensitivityTester:
         # (exposures span ~2 orders of magnitude: 22ms to 0.57ms)
         elif 10 < abs_angle < 85:
             import math
+
             exp_7 = exp[7.0]
             exp_90 = exp[90.0]
             # Normalize angle to 0-1 range between 7 and 90
@@ -255,9 +260,7 @@ class PPMRotationSensitivityTester:
         ch.setLevel(logging.INFO)
 
         # Formatter
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
 
@@ -328,8 +331,9 @@ class PPMRotationSensitivityTester:
             self.logger.error(f"Reconnection failed: {e}")
             return False
 
-    def acquire_at_angle(self, angle: float, save_name: str,
-                        exposure_ms: float = None) -> Optional[Path]:
+    def acquire_at_angle(
+        self, angle: float, save_name: str, exposure_ms: float = None
+    ) -> Optional[Path]:
         """
         Acquire a single image at specified rotation angle using SNAP command.
 
@@ -363,7 +367,9 @@ class PPMRotationSensitivityTester:
             # Step 2: Verify position (this is a complete request/response cycle)
             actual_angle = self.client.test_get_rotation()
             angle_error = abs(actual_angle - angle)
-            self.logger.info(f"Set: {angle:.2f} deg, Read: {actual_angle:.2f} deg, Error: {angle_error:.3f} deg")
+            self.logger.info(
+                f"Set: {angle:.2f} deg, Read: {actual_angle:.2f} deg, Error: {angle_error:.3f} deg"
+            )
 
             if angle_error > 0.5:  # Warning threshold
                 self.logger.warning(f"Large angle error: {angle_error:.3f} degrees")
@@ -373,9 +379,7 @@ class PPMRotationSensitivityTester:
 
             self.logger.debug(f"Sending SNAP: angle={angle:.2f}, exposure={exposure_ms:.2f}ms")
             result = self.client.test_snap(
-                angle=angle,
-                exposure_ms=exposure_ms,
-                output_path=str(output_path)
+                angle=angle, exposure_ms=exposure_ms, output_path=str(output_path)
             )
 
             if result:
@@ -410,7 +414,9 @@ class PPMRotationSensitivityTester:
 
         for i, angle in enumerate(self.standard_angles):
             exposure = self.get_exposure_for_angle(angle)
-            self.logger.info(f"[{i+1}/{len(self.standard_angles)}] Acquiring at {angle} deg (exposure: {exposure:.2f} ms)")
+            self.logger.info(
+                f"[{i+1}/{len(self.standard_angles)}] Acquiring at {angle} deg (exposure: {exposure:.2f} ms)"
+            )
 
             save_name = f"standard_{angle:05.1f}deg.tif"
             image_path = self.acquire_at_angle(angle, save_name, exposure_ms=exposure)
@@ -421,13 +427,16 @@ class PPMRotationSensitivityTester:
                 self.logger.warning(f"Failed to acquire at {angle} degrees")
 
         self.logger.info(f"Acquired {len(acquired)}/{len(self.standard_angles)} standard angles")
-        self.test_results['standard_angles'] = acquired
+        self.test_results["standard_angles"] = acquired
         return acquired
 
-    def run_fine_deviation_test(self, base_angle: float = 7.0,
-                               deviations: List[float] = None,
-                               fixed_exposure_ms: float = None,
-                               acquire_zero_reference: bool = True) -> Dict[float, Path]:
+    def run_fine_deviation_test(
+        self,
+        base_angle: float = 7.0,
+        deviations: List[float] = None,
+        fixed_exposure_ms: float = None,
+        acquire_zero_reference: bool = True,
+    ) -> Dict[float, Path]:
         """
         Test fine angular deviations around a base angle.
 
@@ -462,8 +471,10 @@ class PPMRotationSensitivityTester:
         cluster_exposure = fixed_exposure_ms
         if cluster_exposure is None:
             cluster_exposure = self.get_exposure_for_angle(base_angle)
-            self.logger.info(f"Using BACKGROUND CALIBRATION exposure for {base_angle} deg: "
-                           f"{cluster_exposure:.2f} ms")
+            self.logger.info(
+                f"Using BACKGROUND CALIBRATION exposure for {base_angle} deg: "
+                f"{cluster_exposure:.2f} ms"
+            )
 
         self.logger.info(f"FIXED exposure for entire cluster: {cluster_exposure:.2f} ms")
         self.logger.info("All images in this cluster will have identical exposure")
@@ -473,9 +484,13 @@ class PPMRotationSensitivityTester:
         # First, acquire the BASE ANGLE reference image
         # This is the most important reference - all deviations are compared to this
         self.logger.info("-" * 40)
-        self.logger.info(f"Acquiring BASE ANGLE reference: {base_angle:.2f} deg with cluster exposure ({cluster_exposure:.2f} ms)")
+        self.logger.info(
+            f"Acquiring BASE ANGLE reference: {base_angle:.2f} deg with cluster exposure ({cluster_exposure:.2f} ms)"
+        )
         base_save_name = f"{base_angle:.2f}.tif"
-        base_image_path = self.acquire_at_angle(base_angle, base_save_name, exposure_ms=cluster_exposure)
+        base_image_path = self.acquire_at_angle(
+            base_angle, base_save_name, exposure_ms=cluster_exposure
+        )
         if base_image_path:
             acquired[float(base_angle)] = base_image_path
             self.logger.info(f"Acquired base angle reference: {base_save_name}")
@@ -485,14 +500,18 @@ class PPMRotationSensitivityTester:
         # This allows comparison to crossed polars baseline
         if acquire_zero_reference and base_angle != 0:
             self.logger.info("-" * 40)
-            self.logger.info(f"Acquiring 0 deg reference with cluster exposure ({cluster_exposure:.2f} ms)")
+            self.logger.info(
+                f"Acquiring 0 deg reference with cluster exposure ({cluster_exposure:.2f} ms)"
+            )
             # Save with cluster-specific name so multiple runs don't overwrite
             save_name = f"0.00_at_{base_angle:.0f}deg_exposure.tif"
             image_path = self.acquire_at_angle(0.0, save_name, exposure_ms=cluster_exposure)
             if image_path:
                 # Store with special key to indicate it's a reference
                 acquired[f"0.0_ref_{base_angle}"] = image_path
-                self.logger.info(f"Acquired 0 deg reference for {base_angle} deg cluster comparison")
+                self.logger.info(
+                    f"Acquired 0 deg reference for {base_angle} deg cluster comparison"
+                )
             self.logger.info("-" * 40)
 
         # Acquire deviation images
@@ -500,10 +519,13 @@ class PPMRotationSensitivityTester:
             # Test positive deviation
             angle_pos = base_angle + dev
             if 0 <= angle_pos <= 180:  # Check hardware limits
-                self.logger.info(f"[{i*2+1}/{len(deviations)*2}] Testing {angle_pos:.2f} deg (+{dev})")
+                self.logger.info(
+                    f"[{i*2+1}/{len(deviations)*2}] Testing {angle_pos:.2f} deg (+{dev})"
+                )
                 save_name = f"{angle_pos:.2f}.tif"
-                image_path = self.acquire_at_angle(angle_pos, save_name,
-                                                   exposure_ms=cluster_exposure)
+                image_path = self.acquire_at_angle(
+                    angle_pos, save_name, exposure_ms=cluster_exposure
+                )
                 if image_path:
                     acquired[angle_pos] = image_path
 
@@ -511,20 +533,24 @@ class PPMRotationSensitivityTester:
             if dev > 0:
                 angle_neg = base_angle - dev
                 if 0 <= angle_neg <= 180:
-                    self.logger.info(f"[{i*2+2}/{len(deviations)*2}] Testing {angle_neg:.2f} deg (-{dev})")
+                    self.logger.info(
+                        f"[{i*2+2}/{len(deviations)*2}] Testing {angle_neg:.2f} deg (-{dev})"
+                    )
                     save_name = f"{angle_neg:.2f}.tif"
-                    image_path = self.acquire_at_angle(angle_neg, save_name,
-                                                       exposure_ms=cluster_exposure)
+                    image_path = self.acquire_at_angle(
+                        angle_neg, save_name, exposure_ms=cluster_exposure
+                    )
                     if image_path:
                         acquired[angle_neg] = image_path
 
         self.logger.info(f"Acquired {len(acquired)} images (including reference)")
         self.logger.info(f"Cluster exposure used: {cluster_exposure:.2f} ms")
-        self.test_results[f'deviation_{base_angle}deg'] = acquired
+        self.test_results[f"deviation_{base_angle}deg"] = acquired
         return acquired
 
-    def run_zero_rotation_baseline_test(self, test_angles: List[float] = None,
-                                        n_repeats: int = 3) -> Dict:
+    def run_zero_rotation_baseline_test(
+        self, test_angles: List[float] = None, n_repeats: int = 3
+    ) -> Dict:
         """
         Baseline test: acquire multiple images at the SAME angle WITHOUT rotation.
 
@@ -605,21 +631,20 @@ class PPMRotationSensitivityTester:
                     path_b = None
 
                 if path_a and path_b:
-                    pairs.append({
-                        'pair': i + 1,
-                        'angle': angle,
-                        'image_a': str(path_a),
-                        'image_b': str(path_b)
-                    })
+                    pairs.append(
+                        {
+                            "pair": i + 1,
+                            "angle": angle,
+                            "image_a": str(path_a),
+                            "image_b": str(path_b),
+                        }
+                    )
 
-            baseline_results[angle] = {
-                'exposure_ms': exposure,
-                'pairs': pairs
-            }
+            baseline_results[angle] = {"exposure_ms": exposure, "pairs": pairs}
 
             self.logger.info(f"Acquired {len(pairs)} image pairs at {angle} deg")
 
-        self.test_results['zero_rotation_baseline'] = baseline_results
+        self.test_results["zero_rotation_baseline"] = baseline_results
         self.logger.info("=" * 60)
         self.logger.info("Zero-rotation baseline test complete")
         self.logger.info("Analyze these pairs to verify ~0% intensity difference")
@@ -627,9 +652,9 @@ class PPMRotationSensitivityTester:
 
         return baseline_results
 
-    def run_repeatability_test(self, test_angle: float = 7.0,
-                              n_repeats: int = 10,
-                              include_large_movements: bool = True) -> List[Dict]:
+    def run_repeatability_test(
+        self, test_angle: float = 7.0, n_repeats: int = 10, include_large_movements: bool = True
+    ) -> List[Dict]:
         """
         Test mechanical repeatability with both small and large movements.
 
@@ -675,14 +700,14 @@ class PPMRotationSensitivityTester:
             error = actual - test_angle
 
             measurement = {
-                'repetition': i + 1,
-                'test_type': 'small_movement',
-                'from_angle': 0,
-                'set_angle': test_angle,
-                'travel_deg': test_angle,
-                'read_angle': actual,
-                'error': error,
-                'timestamp': datetime.now().isoformat()
+                "repetition": i + 1,
+                "test_type": "small_movement",
+                "from_angle": 0,
+                "set_angle": test_angle,
+                "travel_deg": test_angle,
+                "read_angle": actual,
+                "error": error,
+                "timestamp": datetime.now().isoformat(),
             }
             all_measurements.append(measurement)
 
@@ -710,14 +735,14 @@ class PPMRotationSensitivityTester:
                 error = actual - 90
 
                 measurement = {
-                    'repetition': i + 1,
-                    'test_type': 'large_movement_0_to_90',
-                    'from_angle': 0,
-                    'set_angle': 90,
-                    'travel_deg': 90,
-                    'read_angle': actual,
-                    'error': error,
-                    'timestamp': datetime.now().isoformat()
+                    "repetition": i + 1,
+                    "test_type": "large_movement_0_to_90",
+                    "from_angle": 0,
+                    "set_angle": 90,
+                    "travel_deg": 90,
+                    "read_angle": actual,
+                    "error": error,
+                    "timestamp": datetime.now().isoformat(),
                 }
                 all_measurements.append(measurement)
 
@@ -725,7 +750,9 @@ class PPMRotationSensitivityTester:
 
             # Test 2: 90 -> test_angle (large movement back)
             self.logger.info("-" * 40)
-            self.logger.info(f"LARGE MOVEMENTS: 90 -> {test_angle} deg ({90 - test_angle} deg travel)")
+            self.logger.info(
+                f"LARGE MOVEMENTS: 90 -> {test_angle} deg ({90 - test_angle} deg travel)"
+            )
             self.logger.info("-" * 40)
 
             for i in range(n_repeats):
@@ -743,14 +770,14 @@ class PPMRotationSensitivityTester:
                 error = actual - test_angle
 
                 measurement = {
-                    'repetition': i + 1,
-                    'test_type': 'large_movement_90_to_target',
-                    'from_angle': 90,
-                    'set_angle': test_angle,
-                    'travel_deg': 90 - test_angle,
-                    'read_angle': actual,
-                    'error': error,
-                    'timestamp': datetime.now().isoformat()
+                    "repetition": i + 1,
+                    "test_type": "large_movement_90_to_target",
+                    "from_angle": 90,
+                    "set_angle": test_angle,
+                    "travel_deg": 90 - test_angle,
+                    "read_angle": actual,
+                    "error": error,
+                    "timestamp": datetime.now().isoformat(),
                 }
                 all_measurements.append(measurement)
 
@@ -782,18 +809,20 @@ class PPMRotationSensitivityTester:
                 hysteresis = end_pos - start_pos
 
                 measurement = {
-                    'repetition': i + 1,
-                    'test_type': 'bidirectional_hysteresis',
-                    'start_angle': start_pos,
-                    'mid_angle': mid_pos,
-                    'end_angle': end_pos,
-                    'travel_deg': 180,  # Total travel: 0->90->0
-                    'hysteresis': hysteresis,
-                    'timestamp': datetime.now().isoformat()
+                    "repetition": i + 1,
+                    "test_type": "bidirectional_hysteresis",
+                    "start_angle": start_pos,
+                    "mid_angle": mid_pos,
+                    "end_angle": end_pos,
+                    "travel_deg": 180,  # Total travel: 0->90->0
+                    "hysteresis": hysteresis,
+                    "timestamp": datetime.now().isoformat(),
                 }
                 all_measurements.append(measurement)
 
-                self.logger.info(f"  Start: {start_pos:.4f}, Mid: {mid_pos:.3f}, End: {end_pos:.4f}")
+                self.logger.info(
+                    f"  Start: {start_pos:.4f}, Mid: {mid_pos:.3f}, End: {end_pos:.4f}"
+                )
                 self.logger.info(f"  Hysteresis: {hysteresis:.4f} deg")
 
         # ========== CALCULATE STATISTICS BY TEST TYPE ==========
@@ -804,52 +833,60 @@ class PPMRotationSensitivityTester:
         stats_by_type = {}
 
         # Group measurements by test type
-        test_types = set(m.get('test_type', 'unknown') for m in all_measurements)
+        test_types = set(m.get("test_type", "unknown") for m in all_measurements)
 
         for test_type in test_types:
-            type_measurements = [m for m in all_measurements if m.get('test_type') == test_type]
+            type_measurements = [m for m in all_measurements if m.get("test_type") == test_type]
 
-            if test_type == 'bidirectional_hysteresis':
+            if test_type == "bidirectional_hysteresis":
                 # Special handling for hysteresis test
-                hysteresis_values = [m['hysteresis'] for m in type_measurements]
+                hysteresis_values = [m["hysteresis"] for m in type_measurements]
                 stats_by_type[test_type] = {
-                    'n_measurements': len(type_measurements),
-                    'mean_hysteresis': float(np.mean(hysteresis_values)),
-                    'max_hysteresis': float(np.max(np.abs(hysteresis_values))),
-                    'std_hysteresis': float(np.std(hysteresis_values))
+                    "n_measurements": len(type_measurements),
+                    "mean_hysteresis": float(np.mean(hysteresis_values)),
+                    "max_hysteresis": float(np.max(np.abs(hysteresis_values))),
+                    "std_hysteresis": float(np.std(hysteresis_values)),
                 }
                 self.logger.info(f"\n{test_type}:")
                 self.logger.info(f"  N measurements: {stats_by_type[test_type]['n_measurements']}")
-                self.logger.info(f"  Mean hysteresis: {stats_by_type[test_type]['mean_hysteresis']:.4f} deg")
-                self.logger.info(f"  Max hysteresis: {stats_by_type[test_type]['max_hysteresis']:.4f} deg")
+                self.logger.info(
+                    f"  Mean hysteresis: {stats_by_type[test_type]['mean_hysteresis']:.4f} deg"
+                )
+                self.logger.info(
+                    f"  Max hysteresis: {stats_by_type[test_type]['max_hysteresis']:.4f} deg"
+                )
             else:
                 # Standard error statistics
-                errors = [m['error'] for m in type_measurements]
-                travel = type_measurements[0].get('travel_deg', 0) if type_measurements else 0
+                errors = [m["error"] for m in type_measurements]
+                travel = type_measurements[0].get("travel_deg", 0) if type_measurements else 0
 
                 stats_by_type[test_type] = {
-                    'n_measurements': len(type_measurements),
-                    'travel_deg': travel,
-                    'mean_error': float(np.mean(errors)),
-                    'std_error': float(np.std(errors)),
-                    'max_error': float(np.max(np.abs(errors))),
-                    'repeatability_2sigma': float(2 * np.std(errors))
+                    "n_measurements": len(type_measurements),
+                    "travel_deg": travel,
+                    "mean_error": float(np.mean(errors)),
+                    "std_error": float(np.std(errors)),
+                    "max_error": float(np.max(np.abs(errors))),
+                    "repeatability_2sigma": float(2 * np.std(errors)),
                 }
                 self.logger.info(f"\n{test_type} ({travel} deg travel):")
                 self.logger.info(f"  N measurements: {stats_by_type[test_type]['n_measurements']}")
                 self.logger.info(f"  Mean error: {stats_by_type[test_type]['mean_error']:.4f} deg")
-                self.logger.info(f"  Std deviation: {stats_by_type[test_type]['std_error']:.4f} deg")
+                self.logger.info(
+                    f"  Std deviation: {stats_by_type[test_type]['std_error']:.4f} deg"
+                )
                 self.logger.info(f"  Max error: {stats_by_type[test_type]['max_error']:.4f} deg")
-                self.logger.info(f"  2-sigma repeatability: {stats_by_type[test_type]['repeatability_2sigma']:.4f} deg")
+                self.logger.info(
+                    f"  2-sigma repeatability: {stats_by_type[test_type]['repeatability_2sigma']:.4f} deg"
+                )
 
         # Overall statistics (all non-hysteresis measurements)
-        all_errors = [m['error'] for m in all_measurements if 'error' in m]
+        all_errors = [m["error"] for m in all_measurements if "error" in m]
         overall_stats = {
-            'total_measurements': len(all_measurements),
-            'mean_error': float(np.mean(all_errors)) if all_errors else 0,
-            'std_error': float(np.std(all_errors)) if all_errors else 0,
-            'max_error': float(np.max(np.abs(all_errors))) if all_errors else 0,
-            'repeatability_2sigma': float(2 * np.std(all_errors)) if all_errors else 0
+            "total_measurements": len(all_measurements),
+            "mean_error": float(np.mean(all_errors)) if all_errors else 0,
+            "std_error": float(np.std(all_errors)) if all_errors else 0,
+            "max_error": float(np.max(np.abs(all_errors))) if all_errors else 0,
+            "repeatability_2sigma": float(2 * np.std(all_errors)) if all_errors else 0,
         }
 
         self.logger.info("\n" + "=" * 40)
@@ -857,12 +894,14 @@ class PPMRotationSensitivityTester:
         self.logger.info(f"  Total measurements: {overall_stats['total_measurements']}")
         self.logger.info(f"  Mean error: {overall_stats['mean_error']:.4f} deg")
         self.logger.info(f"  Max error: {overall_stats['max_error']:.4f} deg")
-        self.logger.info(f"  2-sigma repeatability: {overall_stats['repeatability_2sigma']:.4f} deg")
+        self.logger.info(
+            f"  2-sigma repeatability: {overall_stats['repeatability_2sigma']:.4f} deg"
+        )
 
-        self.test_results['repeatability'] = {
-            'measurements': all_measurements,
-            'statistics_by_type': stats_by_type,
-            'overall_statistics': overall_stats
+        self.test_results["repeatability"] = {
+            "measurements": all_measurements,
+            "statistics_by_type": stats_by_type,
+            "overall_statistics": overall_stats,
         }
 
         return all_measurements
@@ -899,12 +938,12 @@ class PPMRotationSensitivityTester:
 
         # Placeholder results
         results = {
-            'status': 'skipped',
-            'reason': 'Direct hardware access required - not available via socket connection',
-            'suggestion': 'Run calibration through qp_server CALIBRATE command'
+            "status": "skipped",
+            "reason": "Direct hardware access required - not available via socket connection",
+            "suggestion": "Run calibration through qp_server CALIBRATE command",
         }
 
-        self.test_results['polarizer_calibration'] = results
+        self.test_results["polarizer_calibration"] = results
         return results
 
     def analyze_results(self) -> Dict:
@@ -925,8 +964,7 @@ class PPMRotationSensitivityTester:
         try:
             # Initialize analyzer
             analyzer = PPMRotationAnalyzer(
-                base_path=self.output_dir,
-                output_dir=self.output_dir / "analysis"
+                base_path=self.output_dir, output_dir=self.output_dir / "analysis"
             )
 
             # Try loading standard images first, then deviation images
@@ -974,7 +1012,7 @@ class PPMRotationSensitivityTester:
 
             # Show fine-grained adjacent comparisons (delta < 1 degree)
             if not df_adjacent.empty:
-                fine_steps = df_adjacent[df_adjacent['delta_deg'] < 1.0]
+                fine_steps = df_adjacent[df_adjacent["delta_deg"] < 1.0]
                 if not fine_steps.empty:
                     self.logger.info("\nFine steps (< 1 degree apart):")
                     for _, row in fine_steps.iterrows():
@@ -991,6 +1029,7 @@ class PPMRotationSensitivityTester:
 
             # Skip birefringence analysis for deviation test (needs specific angle pairs)
             import pandas as pd
+
             df_birefringence = pd.DataFrame()
 
             # Save detailed results to CSV
@@ -1009,10 +1048,10 @@ class PPMRotationSensitivityTester:
                 df_differences=df_differences,
                 df_birefringence=df_birefringence,
                 df_adjacent=df_adjacent,
-                fine_sensitivity=fine_sensitivity
+                fine_sensitivity=fine_sensitivity,
             )
 
-            self.test_results['analysis'] = report
+            self.test_results["analysis"] = report
             return report
 
         except Exception as e:
@@ -1024,51 +1063,53 @@ class PPMRotationSensitivityTester:
         summary_file = self.output_dir / "test_summary.json"
 
         summary = {
-            'test_date': datetime.now().isoformat(),
-            'config_file': str(self.config_yaml),
-            'output_directory': str(self.output_dir),
-            'tests_performed': list(self.test_results.keys()),
-            'results': {}
+            "test_date": datetime.now().isoformat(),
+            "config_file": str(self.config_yaml),
+            "output_directory": str(self.output_dir),
+            "tests_performed": list(self.test_results.keys()),
+            "results": {},
         }
 
         # Summarize each test
         for test_name, results in self.test_results.items():
-            if test_name == 'standard_angles':
-                summary['results'][test_name] = {
-                    'angles_acquired': len(results),
-                    'angles_list': sorted(results.keys())
+            if test_name == "standard_angles":
+                summary["results"][test_name] = {
+                    "angles_acquired": len(results),
+                    "angles_list": sorted(results.keys()),
                 }
-            elif test_name.startswith('deviation_'):
+            elif test_name.startswith("deviation_"):
                 if results:
                     # Filter to numeric keys only (exclude reference image string keys)
                     numeric_angles = [k for k in results.keys() if isinstance(k, (int, float))]
-                    summary['results'][test_name] = {
-                        'images_acquired': len(results),
-                        'angle_range': [min(numeric_angles), max(numeric_angles)] if numeric_angles else [],
-                        'reference_images': [k for k in results.keys() if isinstance(k, str)]
+                    summary["results"][test_name] = {
+                        "images_acquired": len(results),
+                        "angle_range": (
+                            [min(numeric_angles), max(numeric_angles)] if numeric_angles else []
+                        ),
+                        "reference_images": [k for k in results.keys() if isinstance(k, str)],
                     }
                 else:
-                    summary['results'][test_name] = {
-                        'images_acquired': 0,
-                        'angle_range': [],
-                        'error': 'No images acquired - acquisition may have timed out'
+                    summary["results"][test_name] = {
+                        "images_acquired": 0,
+                        "angle_range": [],
+                        "error": "No images acquired - acquisition may have timed out",
                     }
-            elif test_name == 'repeatability':
+            elif test_name == "repeatability":
                 # Include both overall and per-type statistics
-                summary['results'][test_name] = {
-                    'overall': results.get('overall_statistics', {}),
-                    'by_type': results.get('statistics_by_type', {})
+                summary["results"][test_name] = {
+                    "overall": results.get("overall_statistics", {}),
+                    "by_type": results.get("statistics_by_type", {}),
                 }
-            elif test_name == 'analysis':
-                summary['results'][test_name] = results.get('summary', {})
+            elif test_name == "analysis":
+                summary["results"][test_name] = results.get("summary", {})
 
         # Save JSON summary
-        with open(summary_file, 'w') as f:
+        with open(summary_file, "w") as f:
             json.dump(summary, f, indent=2, default=str)
 
         # Save human-readable report
         report_file = self.output_dir / "test_report.txt"
-        with open(report_file, 'w') as f:
+        with open(report_file, "w") as f:
             f.write("PPM ROTATION SENSITIVITY TEST REPORT\n")
             f.write("=" * 70 + "\n\n")
             f.write(f"Test Date: {summary['test_date']}\n")
@@ -1077,41 +1118,49 @@ class PPMRotationSensitivityTester:
 
             f.write("TESTS PERFORMED:\n")
             f.write("-" * 40 + "\n")
-            for test in summary['tests_performed']:
+            for test in summary["tests_performed"]:
                 f.write(f"  - {test}\n")
 
-            if 'repeatability' in self.test_results:
-                overall = self.test_results['repeatability'].get('overall_statistics', {})
-                by_type = self.test_results['repeatability'].get('statistics_by_type', {})
+            if "repeatability" in self.test_results:
+                overall = self.test_results["repeatability"].get("overall_statistics", {})
+                by_type = self.test_results["repeatability"].get("statistics_by_type", {})
 
-                f.write(f"\nMECHANICAL REPEATABILITY:\n")
+                f.write("\nMECHANICAL REPEATABILITY:\n")
                 f.write("=" * 50 + "\n")
 
                 if overall:
-                    f.write(f"\nOVERALL (all movement types combined):\n")
+                    f.write("\nOVERALL (all movement types combined):\n")
                     f.write("-" * 40 + "\n")
                     f.write(f"  Total measurements: {overall.get('total_measurements', 0)}\n")
                     f.write(f"  Mean error: {overall.get('mean_error', 0):.4f} degrees\n")
-                    f.write(f"  2-sigma repeatability: {overall.get('repeatability_2sigma', 0):.4f} degrees\n")
+                    f.write(
+                        f"  2-sigma repeatability: {overall.get('repeatability_2sigma', 0):.4f} degrees\n"
+                    )
                     f.write(f"  Maximum error: {overall.get('max_error', 0):.4f} degrees\n")
 
                 if by_type:
-                    f.write(f"\nBY MOVEMENT TYPE:\n")
+                    f.write("\nBY MOVEMENT TYPE:\n")
                     f.write("-" * 40 + "\n")
                     for test_type, stats in by_type.items():
-                        if test_type == 'bidirectional_hysteresis':
+                        if test_type == "bidirectional_hysteresis":
                             f.write(f"\n  {test_type} (180 deg total travel):\n")
-                            f.write(f"    Mean hysteresis: {stats.get('mean_hysteresis', 0):.4f} degrees\n")
-                            f.write(f"    Max hysteresis: {stats.get('max_hysteresis', 0):.4f} degrees\n")
+                            f.write(
+                                f"    Mean hysteresis: {stats.get('mean_hysteresis', 0):.4f} degrees\n"
+                            )
+                            f.write(
+                                f"    Max hysteresis: {stats.get('max_hysteresis', 0):.4f} degrees\n"
+                            )
                         else:
-                            travel = stats.get('travel_deg', 0)
+                            travel = stats.get("travel_deg", 0)
                             f.write(f"\n  {test_type} ({travel} deg travel):\n")
                             f.write(f"    Mean error: {stats.get('mean_error', 0):.4f} degrees\n")
-                            f.write(f"    2-sigma: {stats.get('repeatability_2sigma', 0):.4f} degrees\n")
+                            f.write(
+                                f"    2-sigma: {stats.get('repeatability_2sigma', 0):.4f} degrees\n"
+                            )
                             f.write(f"    Max error: {stats.get('max_error', 0):.4f} degrees\n")
 
                 if not overall and not by_type:
-                    f.write(f"  Statistics not available\n")
+                    f.write("  Statistics not available\n")
 
             f.write(f"\nFull details in: {summary_file}\n")
 
@@ -1132,7 +1181,7 @@ class PPMRotationSensitivityTester:
 
         self.logger.info("Generating combined motion + intensity summary...")
 
-        with open(combined_file, 'w') as f:
+        with open(combined_file, "w") as f:
             f.write("=" * 80 + "\n")
             f.write("PPM ROTATION SENSITIVITY - COMBINED ANALYSIS REPORT\n")
             f.write("=" * 80 + "\n\n")
@@ -1148,10 +1197,10 @@ class PPMRotationSensitivityTester:
             f.write("PART 1: MECHANICAL MOTION ANALYSIS\n")
             f.write("=" * 80 + "\n\n")
 
-            if 'repeatability' in self.test_results:
-                rep = self.test_results['repeatability']
-                overall = rep.get('overall_statistics', {})
-                by_type = rep.get('statistics_by_type', {})
+            if "repeatability" in self.test_results:
+                rep = self.test_results["repeatability"]
+                overall = rep.get("overall_statistics", {})
+                by_type = rep.get("statistics_by_type", {})
 
                 f.write("1.1 OVERALL REPEATABILITY\n")
                 f.write("-" * 60 + "\n")
@@ -1160,10 +1209,12 @@ class PPMRotationSensitivityTester:
                     f.write(f"  Mean error: {overall.get('mean_error', 0):.4f} deg\n")
                     f.write(f"  Standard deviation: {overall.get('std_error', 0):.4f} deg\n")
                     f.write(f"  Maximum error: {overall.get('max_error', 0):.4f} deg\n")
-                    f.write(f"  2-sigma repeatability: {overall.get('repeatability_2sigma', 0):.4f} deg\n\n")
+                    f.write(
+                        f"  2-sigma repeatability: {overall.get('repeatability_2sigma', 0):.4f} deg\n\n"
+                    )
 
                     # Interpretation
-                    rep_2sigma = overall.get('repeatability_2sigma', 0)
+                    rep_2sigma = overall.get("repeatability_2sigma", 0)
                     if rep_2sigma < 0.05:
                         f.write("  --> EXCELLENT: Repeatability < 0.05 deg (2-sigma)\n\n")
                     elif rep_2sigma < 0.1:
@@ -1171,7 +1222,9 @@ class PPMRotationSensitivityTester:
                     elif rep_2sigma < 0.2:
                         f.write("  --> ACCEPTABLE: Repeatability < 0.2 deg (2-sigma)\n\n")
                     else:
-                        f.write(f"  --> WARNING: Repeatability {rep_2sigma:.3f} deg may affect measurements\n\n")
+                        f.write(
+                            f"  --> WARNING: Repeatability {rep_2sigma:.3f} deg may affect measurements\n\n"
+                        )
                 else:
                     f.write("  No overall statistics available\n\n")
 
@@ -1179,17 +1232,23 @@ class PPMRotationSensitivityTester:
                 f.write("-" * 60 + "\n")
                 if by_type:
                     for test_type, stats in by_type.items():
-                        if test_type == 'bidirectional_hysteresis':
+                        if test_type == "bidirectional_hysteresis":
                             f.write(f"\n  {test_type}:\n")
-                            f.write(f"    Total travel: 180 deg (0 -> 90 -> 0)\n")
-                            f.write(f"    Mean hysteresis: {stats.get('mean_hysteresis', 0):.4f} deg\n")
-                            f.write(f"    Max hysteresis: {stats.get('max_hysteresis', 0):.4f} deg\n")
+                            f.write("    Total travel: 180 deg (0 -> 90 -> 0)\n")
+                            f.write(
+                                f"    Mean hysteresis: {stats.get('mean_hysteresis', 0):.4f} deg\n"
+                            )
+                            f.write(
+                                f"    Max hysteresis: {stats.get('max_hysteresis', 0):.4f} deg\n"
+                            )
                         else:
-                            travel = stats.get('travel_deg', 0)
+                            travel = stats.get("travel_deg", 0)
                             f.write(f"\n  {test_type}:\n")
                             f.write(f"    Travel distance: {travel} deg\n")
                             f.write(f"    Mean error: {stats.get('mean_error', 0):.4f} deg\n")
-                            f.write(f"    2-sigma: {stats.get('repeatability_2sigma', 0):.4f} deg\n")
+                            f.write(
+                                f"    2-sigma: {stats.get('repeatability_2sigma', 0):.4f} deg\n"
+                            )
                             f.write(f"    Max error: {stats.get('max_error', 0):.4f} deg\n")
                     f.write("\n")
                 else:
@@ -1211,12 +1270,12 @@ class PPMRotationSensitivityTester:
                 f.write("(See detailed analysis in: analysis/summary.txt)\n\n")
 
                 # Extract key metrics from analysis results
-                if 'analysis' in self.test_results:
-                    analysis = self.test_results['analysis']
+                if "analysis" in self.test_results:
+                    analysis = self.test_results["analysis"]
                     f.write("2.1 IMAGES ANALYZED\n")
                     f.write("-" * 60 + "\n")
                     f.write(f"  Total images: {analysis.get('n_images_loaded', 'N/A')}\n")
-                    angles = analysis.get('angles_available', [])
+                    angles = analysis.get("angles_available", [])
                     if angles:
                         f.write(f"  Angle range: {min(angles):.2f} to {max(angles):.2f} deg\n")
                     f.write("\n")
@@ -1227,10 +1286,11 @@ class PPMRotationSensitivityTester:
             baseline_csv = self.output_dir / "zero_rotation_baseline.csv"
             if baseline_csv.exists():
                 import pandas as pd
+
                 try:
                     df_baseline = pd.read_csv(baseline_csv)
                     # Filter out sanity check
-                    df_actual = df_baseline[df_baseline['angle'] != -999.0]
+                    df_actual = df_baseline[df_baseline["angle"] != -999.0]
 
                     f.write("2.2 ZERO-ROTATION BASELINE (Measurement Noise Floor)\n")
                     f.write("-" * 60 + "\n")
@@ -1238,9 +1298,9 @@ class PPMRotationSensitivityTester:
                     f.write("  Expected difference: ~0%\n\n")
 
                     if not df_actual.empty:
-                        mean_pct = df_actual['pct_change'].mean()
-                        max_pct = df_actual['pct_change'].max()
-                        mean_ssim = df_actual['ssim'].mean()
+                        mean_pct = df_actual["pct_change"].mean()
+                        max_pct = df_actual["pct_change"].max()
+                        mean_ssim = df_actual["ssim"].mean()
 
                         f.write(f"  Pairs analyzed: {len(df_actual)}\n")
                         f.write(f"  Mean intensity change: {mean_pct:.4f}%\n")
@@ -1248,11 +1308,17 @@ class PPMRotationSensitivityTester:
                         f.write(f"  Mean SSIM: {mean_ssim:.6f}\n\n")
 
                         if mean_pct < 0.1:
-                            f.write("  --> GOOD: Baseline noise is low. Measurements are valid.\n\n")
+                            f.write(
+                                "  --> GOOD: Baseline noise is low. Measurements are valid.\n\n"
+                            )
                         elif mean_pct < 1.0:
-                            f.write("  --> MODERATE: Baseline noise present. Consider in analysis.\n\n")
+                            f.write(
+                                "  --> MODERATE: Baseline noise present. Consider in analysis.\n\n"
+                            )
                         else:
-                            f.write("  --> WARNING: High baseline noise indicates measurement issues.\n\n")
+                            f.write(
+                                "  --> WARNING: High baseline noise indicates measurement issues.\n\n"
+                            )
                 except Exception as e:
                     f.write(f"  Error reading baseline data: {e}\n\n")
 
@@ -1260,6 +1326,7 @@ class PPMRotationSensitivityTester:
             adjacent_csv = self.output_dir / "adjacent_differences.csv"
             if adjacent_csv.exists():
                 import pandas as pd
+
                 try:
                     df_adj = pd.read_csv(adjacent_csv)
 
@@ -1267,19 +1334,23 @@ class PPMRotationSensitivityTester:
                     f.write("-" * 60 + "\n")
 
                     # Group by step size
-                    fine_steps = df_adj[df_adj['delta_deg'] < 0.3]
-                    medium_steps = df_adj[(df_adj['delta_deg'] >= 0.3) & (df_adj['delta_deg'] < 1.0)]
+                    fine_steps = df_adj[df_adj["delta_deg"] < 0.3]
+                    medium_steps = df_adj[
+                        (df_adj["delta_deg"] >= 0.3) & (df_adj["delta_deg"] < 1.0)
+                    ]
 
                     if not fine_steps.empty:
-                        mean_pct_fine = fine_steps['pct_change'].mean()
-                        mean_delta_fine = fine_steps['delta_deg'].mean()
-                        sensitivity_fine = mean_pct_fine / mean_delta_fine if mean_delta_fine > 0 else 0
+                        mean_pct_fine = fine_steps["pct_change"].mean()
+                        mean_delta_fine = fine_steps["delta_deg"].mean()
+                        sensitivity_fine = (
+                            mean_pct_fine / mean_delta_fine if mean_delta_fine > 0 else 0
+                        )
                         f.write(f"  Fine steps (<0.3 deg): {mean_pct_fine:.4f}% avg change\n")
                         f.write(f"    -> Sensitivity: ~{sensitivity_fine:.3f}% per degree\n\n")
 
                     if not medium_steps.empty:
-                        mean_pct_med = medium_steps['pct_change'].mean()
-                        mean_delta_med = medium_steps['delta_deg'].mean()
+                        mean_pct_med = medium_steps["pct_change"].mean()
+                        mean_delta_med = medium_steps["delta_deg"].mean()
                         sensitivity_med = mean_pct_med / mean_delta_med if mean_delta_med > 0 else 0
                         f.write(f"  Medium steps (0.3-1.0 deg): {mean_pct_med:.4f}% avg change\n")
                         f.write(f"    -> Sensitivity: ~{sensitivity_med:.3f}% per degree\n\n")
@@ -1299,9 +1370,12 @@ class PPMRotationSensitivityTester:
             baseline_noise = 0
             intensity_sensitivity = 0
 
-            if 'repeatability' in self.test_results:
-                rep_2sigma = self.test_results['repeatability'].get(
-                    'overall_statistics', {}).get('repeatability_2sigma', 0)
+            if "repeatability" in self.test_results:
+                rep_2sigma = (
+                    self.test_results["repeatability"]
+                    .get("overall_statistics", {})
+                    .get("repeatability_2sigma", 0)
+                )
 
             f.write("3.1 COMBINED ERROR BUDGET\n")
             f.write("-" * 60 + "\n")
@@ -1311,7 +1385,9 @@ class PPMRotationSensitivityTester:
             if rep_2sigma > 0:
                 # Assume ~1% intensity change per degree as rough estimate
                 estimated_intensity_error = rep_2sigma * 1.0
-                f.write(f"  Estimated intensity error from motion: ~{estimated_intensity_error:.3f}%\n")
+                f.write(
+                    f"  Estimated intensity error from motion: ~{estimated_intensity_error:.3f}%\n"
+                )
             f.write("\n")
 
             f.write("3.2 RECOMMENDATIONS\n")
@@ -1428,7 +1504,7 @@ def run_ppm_sensitivity_test(
     base_angle: float = 7.0,
     n_repeats: int = 10,
     keep_images: bool = True,
-    angle_exposures: Dict[float, float] = None
+    angle_exposures: Dict[float, float] = None,
 ) -> Optional[Path]:
     """
     Run PPM rotation sensitivity test programmatically.
@@ -1460,11 +1536,11 @@ def run_ppm_sensitivity_test(
         host=host,
         port=port,
         angle_exposures=angle_exposures,
-        keep_images=keep_images
+        keep_images=keep_images,
     )
 
     # Run selected test
-    if test_type == 'comprehensive':
+    if test_type == "comprehensive":
         tester.run_comprehensive_test()
         return tester.output_dir
 
@@ -1474,17 +1550,17 @@ def run_ppm_sensitivity_test(
         return None
 
     try:
-        if test_type == 'standard':
+        if test_type == "standard":
             tester.run_standard_angles_test()
-        elif test_type == 'deviation':
+        elif test_type == "deviation":
             tester.run_fine_deviation_test(base_angle=base_angle)
-        elif test_type == 'repeatability':
+        elif test_type == "repeatability":
             tester.run_repeatability_test(test_angle=base_angle, n_repeats=n_repeats)
-        elif test_type == 'calibration':
+        elif test_type == "calibration":
             tester.run_polarizer_calibration_comparison()
 
         # Analyze if we acquired images
-        if test_type in ['standard', 'deviation']:
+        if test_type in ["standard", "deviation"]:
             tester.analyze_results()
 
         # Save summaries
@@ -1505,40 +1581,52 @@ def main():
     """Main entry point for the rotation sensitivity test."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description='PPM Rotation Sensitivity Testing'
+    parser = argparse.ArgumentParser(description="PPM Rotation Sensitivity Testing")
+    parser.add_argument("config_yaml", help="Path to microscope configuration YAML file")
+    parser.add_argument("--output", "-o", help="Output directory for test results")
+    parser.add_argument("--host", default="127.0.0.1", help="qp_server host address")
+    parser.add_argument("--port", type=int, default=5000, help="qp_server port")
+    parser.add_argument(
+        "--test",
+        choices=["comprehensive", "standard", "deviation", "repeatability", "calibration"],
+        default="comprehensive",
+        help="Test type to run",
     )
-    parser.add_argument('config_yaml',
-                       help='Path to microscope configuration YAML file')
-    parser.add_argument('--output', '-o',
-                       help='Output directory for test results')
-    parser.add_argument('--host', default='127.0.0.1',
-                       help='qp_server host address')
-    parser.add_argument('--port', type=int, default=5000,
-                       help='qp_server port')
-    parser.add_argument('--test', choices=['comprehensive', 'standard', 'deviation',
-                                          'repeatability', 'calibration'],
-                       default='comprehensive',
-                       help='Test type to run')
-    parser.add_argument('--base-angle', type=float, default=7.0,
-                       help='Base angle for deviation testing')
-    parser.add_argument('--repeats', type=int, default=10,
-                       help='Number of repetitions for repeatability test')
-    parser.add_argument('--clean', action='store_true',
-                       help='Delete existing output directory before running')
-    parser.add_argument('--keep-images', dest='keep_images', action='store_true',
-                       default=True,
-                       help='Keep acquired .tif images after analysis (default)')
-    parser.add_argument('--no-keep-images', dest='keep_images', action='store_false',
-                       help='Delete .tif images after analysis to conserve disk space')
-    parser.add_argument('--angle-exposures', type=str, default=None,
-                       help='JSON dict of {angle: exposure_ms} overrides, e.g. \'{"7.0": 25.0}\'')
+    parser.add_argument(
+        "--base-angle", type=float, default=7.0, help="Base angle for deviation testing"
+    )
+    parser.add_argument(
+        "--repeats", type=int, default=10, help="Number of repetitions for repeatability test"
+    )
+    parser.add_argument(
+        "--clean", action="store_true", help="Delete existing output directory before running"
+    )
+    parser.add_argument(
+        "--keep-images",
+        dest="keep_images",
+        action="store_true",
+        default=True,
+        help="Keep acquired .tif images after analysis (default)",
+    )
+    parser.add_argument(
+        "--no-keep-images",
+        dest="keep_images",
+        action="store_false",
+        help="Delete .tif images after analysis to conserve disk space",
+    )
+    parser.add_argument(
+        "--angle-exposures",
+        type=str,
+        default=None,
+        help="JSON dict of {angle: exposure_ms} overrides, e.g. '{\"7.0\": 25.0}'",
+    )
 
     args = parser.parse_args()
 
     # Handle --clean flag
     if args.clean and args.output:
         import shutil
+
         output_path = Path(args.output)
         if output_path.exists():
             print(f"Cleaning output directory: {output_path}")
@@ -1566,7 +1654,7 @@ def main():
         base_angle=args.base_angle,
         n_repeats=args.repeats,
         keep_images=args.keep_images,
-        angle_exposures=angle_exposures
+        angle_exposures=angle_exposures,
     )
 
     if result:

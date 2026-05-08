@@ -7,7 +7,7 @@ calibration data and a greyscale mask to define regions of interest.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 from scipy import ndimage

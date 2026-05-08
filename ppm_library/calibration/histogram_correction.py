@@ -10,7 +10,7 @@ that arise from the optical properties of the polarization microscopy system.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 from scipy import interpolate, signal
@@ -135,7 +135,9 @@ class HistogramCalibration:
         # Load circular pattern
         circular_data = np.loadtxt(circular_histogram_path, delimiter=",")
         if circular_data.ndim == 2:
-            circular_hist = circular_data[:, 1] if circular_data.shape[1] >= 2 else circular_data[:, 0]
+            circular_hist = (
+                circular_data[:, 1] if circular_data.shape[1] >= 2 else circular_data[:, 0]
+            )
         else:
             circular_hist = circular_data
 
@@ -260,7 +262,7 @@ class HistogramCalibration:
         if self.phase_shift != 0:
             shift_hue = (self.phase_shift * self.phase_direction) / 255.0 * 180.0
             # Convert shift to hue units (0-255 = 0-180 degrees)
-            shift_bins = (self.phase_shift * self.phase_direction)
+            shift_bins = self.phase_shift * self.phase_direction
             corrected = np.mod(corrected + shift_bins, 255)
 
         # Normalize back to 0-255 range

@@ -91,7 +91,9 @@ class TifWriterUtils:
         # Calculate birefringence (sum of absolute differences)
         output_path = output_dir / filename
 
-        biref_img = TifWriterUtils.ppm_angle_difference(pos_image, neg_image, min_intensity=min_intensity)
+        biref_img = TifWriterUtils.ppm_angle_difference(
+            pos_image, neg_image, min_intensity=min_intensity
+        )
 
         # Save as 16-bit single-channel image (no normalization)
         # Range: 0-765 (sum of absolute RGB differences)
@@ -102,7 +104,9 @@ class TifWriterUtils:
         )
 
         if logger:
-            logger.info(f"  Created birefringence image: {filename} (16-bit, range: {biref_img.min()}-{biref_img.max()})")
+            logger.info(
+                f"  Created birefringence image: {filename} (16-bit, range: {biref_img.min()}-{biref_img.max()})"
+            )
 
         return biref_img
 
@@ -112,7 +116,9 @@ class TifWriterUtils:
         return pos_image.astype(np.float32) - neg_image.astype(np.float32)
 
     @staticmethod
-    def ppm_angle_difference(img1: np.ndarray, img2: np.ndarray, min_intensity: int = 0) -> np.ndarray:
+    def ppm_angle_difference(
+        img1: np.ndarray, img2: np.ndarray, min_intensity: int = 0
+    ) -> np.ndarray:
         """
         Calculate angle difference for polarized microscopy images.
         Sum of absolute differences across RGB channels.
@@ -195,7 +201,9 @@ class TifWriterUtils:
         return np.clip(scaled, 0, 65535).astype(np.uint16)
 
     @staticmethod
-    def ppm_normalized_difference_abs(img1: np.ndarray, img2: np.ndarray, min_intensity: int = 0) -> np.ndarray:
+    def ppm_normalized_difference_abs(
+        img1: np.ndarray, img2: np.ndarray, min_intensity: int = 0
+    ) -> np.ndarray:
         """
         Calculate absolute normalized birefringence for polarized microscopy images.
         Formula: |[I(+) - I(-)]/[I(+) + I(-)]|, converted to grayscale first.
@@ -362,7 +370,9 @@ class TifWriterUtils:
         # Calculate normalized birefringence (absolute value for visualization)
         output_path = output_dir / filename
 
-        norm_biref_img = TifWriterUtils.ppm_normalized_difference_abs(pos_image, neg_image, min_intensity=min_intensity)
+        norm_biref_img = TifWriterUtils.ppm_normalized_difference_abs(
+            pos_image, neg_image, min_intensity=min_intensity
+        )
 
         # Save as 16-bit single-channel image
         # Range: 0-65535 where 0 = no birefringence, 65535 = maximum
@@ -373,7 +383,9 @@ class TifWriterUtils:
         )
 
         if logger:
-            logger.debug(f"  Created normalized birefringence: {filename} (16-bit, range: {norm_biref_img.min()}-{norm_biref_img.max()})")
+            logger.debug(
+                f"  Created normalized birefringence: {filename} (16-bit, range: {norm_biref_img.min()}-{norm_biref_img.max()})"
+            )
 
         return norm_biref_img
 

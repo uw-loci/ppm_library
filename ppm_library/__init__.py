@@ -52,6 +52,7 @@ print(f"Mean fiber angle: {result.mean_angle:.1f} degrees")
 
 try:
     from importlib.metadata import version as _get_version
+
     __version__ = _get_version("ppm-library")
 except Exception:
     __version__ = "0.0.0.dev"
