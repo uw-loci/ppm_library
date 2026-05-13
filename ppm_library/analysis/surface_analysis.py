@@ -608,6 +608,8 @@ def analyze_perpendicularity(
     extended_tacs=False,
     min_collagen_density=0.1,
     min_signal_threshold=0.02,
+    biref_blur_sigma=0.0,
+    hsv_blur_sigma=0.0,
 ):
     """All-in-one entry point for surface perpendicularity analysis.
 
@@ -638,6 +640,13 @@ def analyze_perpendicularity(
             foreground pixels. Replaces biref-based masking when provided.
         min_rgb_intensity: minimum max(R,G,B) to include a pixel. Excludes
             dark absorbing tissue (e.g. hematoxylin nuclei). Default 100.
+        biref_blur_sigma: Gaussian sigma (px) applied to the biref image
+            before threshold gating. Only affects the biref-positive mask;
+            angle computation is unchanged. 0 disables. Default 0.
+        hsv_blur_sigma: Gaussian sigma (px) applied to a copy of the RGB
+            image before HSV / value / min-RGB validity testing. The angle
+            field is still computed from the original RGB so fiber
+            orientation isn't smoothed. 0 disables. Default 0.
 
     Returns:
         dict with:
@@ -670,7 +679,7 @@ def analyze_perpendicularity(
     dilation_px = dilation_um / pixel_size_um
     dilation_px_int = max(1, int(round(dilation_px)))
 
-    # Compute fiber angles
+    # Compute fiber angles from the ORIGINAL RGB so orientation isn't smoothed.
     angle_result = compute_angles_from_rgb(
         rgb_array,
         calibration,
@@ -687,6 +696,30 @@ def analyze_perpendicularity(
     total_pixels = rgb_array.shape[0] * rgb_array.shape[1]
     hsv_valid_count = int(np.sum(fiber_mask))
 
+    # Optionally re-derive the HSV/intensity validity mask from a BLURRED copy
+    # of the RGB image so threshold edges are less ragged. Angle values stay
+    # from the original RGB above; only the validity mask is replaced.
+    if hsv_blur_sigma and hsv_blur_sigma > 0:
+        from skimage import color as _skcolor
+
+        blurred_rgb_f = np.empty(rgb_array.shape, dtype=np.float32)
+        for c in range(3):
+            blurred_rgb_f[:, :, c] = ndimage.gaussian_filter(
+                rgb_array[:, :, c].astype(np.float32), sigma=hsv_blur_sigma
+            )
+        blurred_rgb = np.clip(blurred_rgb_f, 0, 255).astype(np.uint8)
+        hsv_b = _skcolor.rgb2hsv(blurred_rgb)
+        blurred_valid = (hsv_b[:, :, 1] >= saturation_threshold) & (
+            hsv_b[:, :, 2] >= value_threshold
+        )
+        if min_rgb_intensity > 0:
+            blurred_valid = blurred_valid & ~(np.max(blurred_rgb, axis=2) < min_rgb_intensity)
+        # Exclude clipped pixels from the blurred image for consistency
+        blurred_valid = blurred_valid & ~np.any(blurred_rgb == 255, axis=2)
+        fiber_mask = blurred_valid
+        hsv_valid_count = int(np.sum(fiber_mask))
+        _lap("hsv_blur_revalid")
+
     # Apply foreground mask (from pixel classifier) or biref mask
     biref_valid_count = -1
     if foreground_mask is not None:
@@ -695,7 +728,12 @@ def analyze_perpendicularity(
             raise ValueError(f"Foreground mask shape {fg.shape} != image shape {fiber_mask.shape}")
         fiber_mask = fiber_mask & fg
     elif biref_array is not None:
-        biref_mask = compute_ppm_positive_mask(biref_array, biref_threshold)
+        biref_for_thresh = biref_array
+        if biref_blur_sigma and biref_blur_sigma > 0:
+            biref_for_thresh = ndimage.gaussian_filter(
+                biref_array.astype(np.float32), sigma=biref_blur_sigma
+            )
+        biref_mask = compute_ppm_positive_mask(biref_for_thresh, biref_threshold)
         biref_valid_count = int(np.sum(biref_mask))
         fiber_mask = fiber_mask & biref_mask
     combined_valid_count = int(np.sum(fiber_mask))
