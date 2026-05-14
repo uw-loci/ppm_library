@@ -940,6 +940,298 @@ def render_orientation_overlay(
 
 
 # =========================================================================
+# Moving-window alignment analysis
+# =========================================================================
+#
+# Extension beyond Qian et al. 2025 (PS-TACS is per-contour-pixel, not
+# windowed). Provides per-window dominant orientation and an axial
+# order parameter, used to visualise fiber alignment as a heatmap over
+# the analysed region and (optionally) emitted as per-window PathObjects
+# in QuPath.
+
+
+def compute_window_alignment(
+    fiber_angles,
+    fiber_mask,
+    window_px,
+    stride_px=None,
+    min_pixels=None,
+):
+    """Aggregate per-pixel fiber orientations into a grid of windows.
+
+    Each window summarises the fiber angles inside it using axial
+    circular statistics (fibers are 180-periodic):
+
+        c = mean(cos(2 * theta))
+        s = mean(sin(2 * theta))
+        OS  = sqrt(c**2 + s**2)            in [0, 1]
+        theta_bar = 0.5 * atan2(s, c)      in [0, pi)
+
+    OS = 0 => fibers in the window are isotropic (no preferred direction).
+    OS = 1 => fibers all point the same way.
+
+    Args:
+        fiber_angles: (H, W) float, fiber orientations in degrees (0-180).
+            NaN where invalid.
+        fiber_mask: (H, W) bool, valid fiber pixels.
+        window_px: int, side length of each square window in pixels.
+        stride_px: int or None. None / equal to window_px means
+            non-overlapping windows. Smaller values produce overlap.
+        min_pixels: int or None. Minimum number of valid fiber pixels a
+            window must contain to be considered non-empty. None uses
+            max(1, int(0.1 * window_px * window_px)) (10% fill).
+
+    Returns:
+        dict with:
+            'mean_angle_deg':  (Hw, Ww) float, dominant orientation 0..180
+                               or NaN where the window had < min_pixels
+            'order_parameter': (Hw, Ww) float in [0, 1], NaN where empty
+            'n_pixels':        (Hw, Ww) int, valid fiber pixel count per
+                               window
+            'centers_px':      (Hw, Ww, 2) float, (x, y) centre of each
+                               window in source image coordinates
+            'window_px':       int
+            'stride_px':       int
+            'min_pixels':      int
+            'grid_shape':      (Hw, Ww)
+    """
+    if window_px < 2:
+        raise ValueError(f"window_px must be >= 2 (got {window_px})")
+    if stride_px is None:
+        stride_px = window_px
+    if stride_px < 1:
+        raise ValueError(f"stride_px must be >= 1 (got {stride_px})")
+    if min_pixels is None:
+        min_pixels = max(1, int(0.1 * window_px * window_px))
+
+    h, w = fiber_angles.shape
+    # Number of windows whose top-left fits inside the image.
+    hw = max(0, (h - window_px) // stride_px + 1)
+    ww = max(0, (w - window_px) // stride_px + 1)
+
+    mean_angle = np.full((hw, ww), np.nan, dtype=np.float64)
+    order_param = np.full((hw, ww), np.nan, dtype=np.float64)
+    n_pixels = np.zeros((hw, ww), dtype=np.int32)
+    centers = np.zeros((hw, ww, 2), dtype=np.float64)
+
+    # Precompute the axial unit vectors once for valid pixels.
+    valid = np.asarray(fiber_mask, dtype=bool) & ~np.isnan(fiber_angles)
+    two_theta = np.where(valid, np.deg2rad(2.0 * fiber_angles), 0.0)
+    cos2 = np.where(valid, np.cos(two_theta), 0.0)
+    sin2 = np.where(valid, np.sin(two_theta), 0.0)
+
+    for iy in range(hw):
+        y0 = iy * stride_px
+        y1 = y0 + window_px
+        for ix in range(ww):
+            x0 = ix * stride_px
+            x1 = x0 + window_px
+
+            wv = valid[y0:y1, x0:x1]
+            n = int(np.count_nonzero(wv))
+            n_pixels[iy, ix] = n
+            centers[iy, ix, 0] = x0 + window_px / 2.0
+            centers[iy, ix, 1] = y0 + window_px / 2.0
+            if n < min_pixels:
+                continue
+
+            c_bar = cos2[y0:y1, x0:x1][wv].mean()
+            s_bar = sin2[y0:y1, x0:x1][wv].mean()
+            order_param[iy, ix] = float(np.sqrt(c_bar * c_bar + s_bar * s_bar))
+            mean_angle[iy, ix] = float(np.rad2deg(0.5 * np.arctan2(s_bar, c_bar)) % 180.0)
+
+    return {
+        "mean_angle_deg": mean_angle,
+        "order_parameter": order_param,
+        "n_pixels": n_pixels,
+        "centers_px": centers,
+        "window_px": int(window_px),
+        "stride_px": int(stride_px),
+        "min_pixels": int(min_pixels),
+        "grid_shape": (hw, ww),
+    }
+
+
+def render_window_alignment_overlay(
+    window_metrics,
+    output_path,
+    region_h,
+    region_w,
+    cmap_name="viridis",
+):
+    """Render a per-window alignment heatmap PNG.
+
+    Maps order_parameter [0, 1] through a sequential colormap. Windows
+    below the min-pixels threshold (NaN in the input grid) are rendered
+    transparent. The result is upsampled with nearest-neighbour from
+    grid resolution to region resolution so the PNG can be overlaid
+    on the analysis region in QuPath.
+
+    Args:
+        window_metrics: dict from compute_window_alignment()
+        output_path: PNG file path
+        region_h: target image height in pixels (full-res of the region)
+        region_w: target image width in pixels
+        cmap_name: matplotlib colormap name (default 'viridis')
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from PIL import Image
+
+    op = window_metrics["order_parameter"]
+    valid = ~np.isnan(op)
+    norm = np.where(valid, np.clip(op, 0.0, 1.0), 0.0).astype(np.float32)
+    cmap = plt.get_cmap(cmap_name)
+    rgba_grid = cmap(norm)
+    rgba_grid[..., 3] = valid.astype(np.float32)
+    rgba_u8 = (rgba_grid * 255.0).clip(0, 255).astype(np.uint8)
+
+    _save_window_overlay_png(rgba_u8, window_metrics, output_path, region_h, region_w)
+
+
+def render_window_orientation_overlay(
+    window_metrics,
+    output_path,
+    region_h,
+    region_w,
+):
+    """Render a per-window dominant-orientation heatmap PNG.
+
+    Uses an HSV mapping so the hue cycles through the full 0..180 deg
+    axial angle range; saturation is scaled by the order parameter so
+    nearly-isotropic windows fade toward grey (information-poor) while
+    well-aligned windows show their colour clearly. Windows below the
+    min-pixels threshold are rendered transparent.
+
+    Args:
+        window_metrics: dict from compute_window_alignment()
+        output_path: PNG file path
+        region_h: target image height in pixels
+        region_w: target image width in pixels
+    """
+    import matplotlib.colors as mcolors
+    from PIL import Image
+
+    mean = window_metrics["mean_angle_deg"]
+    op = window_metrics["order_parameter"]
+    valid = ~np.isnan(mean) & ~np.isnan(op)
+
+    # Hue from angle: 0..180 deg -> [0, 1).
+    hue = np.where(valid, (mean / 180.0) % 1.0, 0.0).astype(np.float32)
+    sat = np.where(valid, np.clip(op, 0.0, 1.0), 0.0).astype(np.float32)
+    val = np.where(valid, 1.0, 0.0).astype(np.float32)
+    hsv = np.stack([hue, sat, val], axis=-1)
+    rgb = mcolors.hsv_to_rgb(hsv)
+
+    rgba_grid = np.zeros((*mean.shape, 4), dtype=np.float32)
+    rgba_grid[..., :3] = rgb
+    rgba_grid[..., 3] = valid.astype(np.float32)
+    rgba_u8 = (rgba_grid * 255.0).clip(0, 255).astype(np.uint8)
+
+    _save_window_overlay_png(rgba_u8, window_metrics, output_path, region_h, region_w)
+
+
+def _save_window_overlay_png(rgba_u8, window_metrics, output_path, region_h, region_w):
+    """Upsample an (Hw, Ww, 4) RGBA grid to image resolution and save as PNG.
+
+    Only the rectangle actually covered by windows is filled; the leftover
+    strip on the right / bottom edge (when region_w is not an exact
+    multiple of stride_px) is left fully transparent so the overlay
+    accurately reflects the analysed area.
+    """
+    import os
+
+    from PIL import Image
+
+    hw, ww = window_metrics["grid_shape"]
+    window_px = window_metrics["window_px"]
+    stride_px = window_metrics["stride_px"]
+    if hw == 0 or ww == 0:
+        # Nothing to upsample -- write a fully-transparent PNG.
+        out = np.zeros((int(region_h), int(region_w), 4), dtype=np.uint8)
+        os.makedirs(os.path.dirname(str(output_path)) or ".", exist_ok=True)
+        Image.fromarray(out, mode="RGBA").save(str(output_path))
+        return
+
+    covered_h = (hw - 1) * stride_px + window_px
+    covered_w = (ww - 1) * stride_px + window_px
+
+    img_small = Image.fromarray(rgba_u8, mode="RGBA")
+    img_covered = img_small.resize((covered_w, covered_h), resample=Image.NEAREST)
+    full = Image.new("RGBA", (int(region_w), int(region_h)), (0, 0, 0, 0))
+    full.paste(img_covered, (0, 0))
+
+    os.makedirs(os.path.dirname(str(output_path)) or ".", exist_ok=True)
+    full.save(str(output_path))
+
+
+def save_window_metrics(window_metrics, output_dir):
+    """Save the per-window metric grids to window_metrics.npz and a
+    JSON sidecar (windows.json) for languages without numpy.
+
+    The JSON file contains only the non-empty windows (those with at
+    least min_pixels valid fiber pixels) so downstream consumers can
+    emit one PathObject per record without filtering. Each entry has
+    top-left x/y, width/height in pixels, dominant orientation, order
+    parameter, and the valid pixel count.
+    """
+    import json
+    import os
+
+    os.makedirs(str(output_dir), exist_ok=True)
+    out_dir = str(output_dir).rstrip("/\\")
+    np.savez(
+        os.path.join(out_dir, "window_metrics.npz"),
+        mean_angle_deg=window_metrics["mean_angle_deg"],
+        order_parameter=window_metrics["order_parameter"],
+        n_pixels=window_metrics["n_pixels"],
+        centers_px=window_metrics["centers_px"],
+        window_px=np.int32(window_metrics["window_px"]),
+        stride_px=np.int32(window_metrics["stride_px"]),
+        min_pixels=np.int32(window_metrics["min_pixels"]),
+    )
+
+    mean = window_metrics["mean_angle_deg"]
+    op = window_metrics["order_parameter"]
+    n_px = window_metrics["n_pixels"]
+    hw, ww = window_metrics["grid_shape"]
+    window_px = window_metrics["window_px"]
+    stride_px = window_metrics["stride_px"]
+
+    records = []
+    for iy in range(hw):
+        for ix in range(ww):
+            if np.isnan(mean[iy, ix]) or np.isnan(op[iy, ix]):
+                continue
+            records.append(
+                {
+                    "x": int(ix * stride_px),
+                    "y": int(iy * stride_px),
+                    "w": int(window_px),
+                    "h": int(window_px),
+                    "mean_angle_deg": float(mean[iy, ix]),
+                    "order_parameter": float(op[iy, ix]),
+                    "n_pixels": int(n_px[iy, ix]),
+                }
+            )
+
+    payload = {
+        "window_um": float(window_metrics.get("window_um", 0.0)),
+        "window_px": int(window_px),
+        "stride_px": int(stride_px),
+        "min_pixels": int(window_metrics["min_pixels"]),
+        "grid_h": int(hw),
+        "grid_w": int(ww),
+        "n_nonempty": len(records),
+        "windows": records,
+    }
+    with open(os.path.join(out_dir, "windows.json"), "w") as f:
+        json.dump(payload, f)
+
+
+# =========================================================================
 # Histogram helpers
 # =========================================================================
 

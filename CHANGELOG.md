@@ -5,6 +5,15 @@ All notable changes to the PPM Library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2026-05-14
+
+### Added
+
+- `compute_window_alignment(fiber_angles, fiber_mask, window_px, stride_px=None, min_pixels=None)` -- aggregates per-pixel fiber orientations into a square-window grid using axial circular statistics (mean angle and order parameter `OS = sqrt(<cos 2theta>^2 + <sin 2theta>^2)`)
+- `render_window_alignment_overlay()` -- viridis heatmap of per-window order parameter, transparent where no windows or below min-pixel threshold; only the actually-covered rectangle is filled
+- `render_window_orientation_overlay()` -- HSV-based heatmap of per-window dominant orientation, saturation gated by order parameter so isotropic windows fade toward grey
+- `save_window_metrics()` -- writes both `window_metrics.npz` (full numpy arrays) and `windows.json` (per-window records, non-empty windows only) for languages without numpy. Each JSON record carries top-left x/y, w/h, mean_angle_deg, order_parameter, n_pixels
+
 ## [1.3.4] - 2026-05-14
 
 ### Added
