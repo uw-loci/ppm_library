@@ -5,6 +5,14 @@ All notable changes to the PPM Library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2026-05-14
+
+### Added
+
+- `save_pixel_arrays(result, output_dir)` -- writes per-pixel arrays from `analyze_perpendicularity()` to `.npy` files (deviation_angles, fiber_angles, fiber_mask, zone_mask, dist_from_boundary, normal_angle_deg) for downstream visualization
+- `render_orientation_overlay(deviation_angles, fiber_mask, output_path, cmap_name="seismic")` -- renders an RGBA PNG with a diverging blue->red colormap (parallel/TACS-2 to perpendicular/TACS-3), matching Qian et al. 2025 Fig 4 E/F
+- `analyze_perpendicularity()` now returns `fiber_angles`, `dist_from_boundary`, and (inside `simple`) `normal_angle_deg` so callers can persist or render the full per-pixel field without recomputation
+
 ## [1.3.3] - 2026-05-13
 
 ### Added

@@ -341,6 +341,7 @@ def compute_simple_perpendicularity(
 
     return {
         "deviation_angles": deviation,
+        "normal_angle_deg": normal_angle_deg,
         "mean_deviation_deg": float(np.mean(valid_deviations)) if n_valid > 0 else float("nan"),
         "std_deviation_deg": float(np.std(valid_deviations)) if n_valid > 0 else float("nan"),
         "histogram_10deg": hist_10deg,
@@ -827,9 +828,11 @@ def analyze_perpendicularity(
         "contour_length_um": contour_length_um,
         "n_contours": len(contours),
         "n_clipped_pixels": n_clipped,
-        # Intermediate masks for visualization (avoids recomputation)
+        # Intermediate masks and per-pixel fields for visualization / persistence
         "fiber_mask": fiber_mask,
         "zone_mask": zone_mask,
+        "fiber_angles": fiber_angles,
+        "dist_from_boundary": dist_from_boundary,
         # Diagnostic counts (avoids recomputation of masks for stats)
         "mask_diagnostics": {
             "total_pixels": total_pixels,
@@ -841,6 +844,99 @@ def analyze_perpendicularity(
             "zone_pixels": int(np.sum(zone_mask)),
         },
     }
+
+
+# =========================================================================
+# Persistence and rendering of per-pixel results
+# =========================================================================
+
+
+def save_pixel_arrays(result, output_dir):
+    """Save per-pixel arrays from analyze_perpendicularity() to .npy files.
+
+    Writes (when present in result):
+        deviation_angles.npy   -- (H, W) float, 0..90, NaN where invalid
+        fiber_angles.npy       -- (H, W) float, 0..180, NaN where invalid
+        fiber_mask.npy         -- (H, W) bool, valid fiber pixels
+        zone_mask.npy          -- (H, W) bool, interrogation zone
+        dist_from_boundary.npy -- (H, W) float, pixels to nearest boundary
+        normal_angle_deg.npy   -- (H, W) float, local outward-normal angle 0..180
+
+    Args:
+        result: dict from analyze_perpendicularity(); may include any subset
+            of the arrays above. Missing keys are silently skipped.
+        output_dir: directory to write into. Created if needed.
+    """
+    import os
+
+    os.makedirs(str(output_dir), exist_ok=True)
+    out = str(output_dir).rstrip("/\\")
+
+    simple = result.get("simple") or {}
+    pairs = [
+        ("deviation_angles", simple.get("deviation_angles")),
+        ("normal_angle_deg", simple.get("normal_angle_deg")),
+        ("fiber_angles", result.get("fiber_angles")),
+        ("fiber_mask", result.get("fiber_mask")),
+        ("zone_mask", result.get("zone_mask")),
+        ("dist_from_boundary", result.get("dist_from_boundary")),
+    ]
+    for name, arr in pairs:
+        if arr is None:
+            continue
+        np.save(os.path.join(out, name + ".npy"), arr)
+
+
+def render_orientation_overlay(
+    deviation_angles,
+    fiber_mask,
+    output_path,
+    cmap_name="seismic",
+):
+    """Render a blue-to-red RGBA PNG of pixel-wise relative orientation.
+
+    Maps deviation angles [0, 90] deg through a diverging blue->red colormap
+    (parallel/TACS-2 = blue, perpendicular/TACS-3 = red), matching the
+    convention used in Qian et al. 2025 Fig 4 E/F. Pixels outside fiber_mask
+    or with NaN deviation are rendered fully transparent so the underlying
+    biref image shows through.
+
+    Args:
+        deviation_angles: (H, W) float, values in [0, 90], NaN allowed
+        fiber_mask: (H, W) bool, valid fiber pixels; the overlay is opaque
+            inside the mask and transparent outside
+        output_path: PNG file path to write
+        cmap_name: matplotlib colormap name (default 'seismic'). Use
+            'RdBu_r' or 'coolwarm' for slightly different blue/red ramps.
+    """
+    import os
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    h, w = deviation_angles.shape
+    valid = np.asarray(fiber_mask, dtype=bool) & ~np.isnan(deviation_angles)
+
+    # Normalize deviation [0, 90] -> [0, 1] for colormap input.
+    norm = np.zeros_like(deviation_angles, dtype=np.float32)
+    if np.any(valid):
+        norm[valid] = np.clip(deviation_angles[valid] / 90.0, 0.0, 1.0)
+
+    cmap = plt.get_cmap(cmap_name)
+    rgba = cmap(norm)  # (H, W, 4) float in [0, 1]
+    # Override alpha: opaque where valid, transparent elsewhere.
+    rgba[..., 3] = valid.astype(np.float32)
+
+    rgba_u8 = (rgba * 255.0).clip(0, 255).astype(np.uint8)
+
+    out_path = str(output_path)
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    # Use Pillow directly to avoid pyplot figure machinery.
+    from PIL import Image
+
+    Image.fromarray(rgba_u8, mode="RGBA").save(out_path)
 
 
 # =========================================================================
