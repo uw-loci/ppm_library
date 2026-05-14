@@ -350,6 +350,51 @@ correction = HistogramCalibration.from_circular_histogram(histogram)
 corrected_histogram = correction.correct_histogram(raw_histogram)
 ```
 
+### Per-Window Fiber Alignment Analysis
+
+Aggregate pixel-level fiber angles into a spatial grid to visualize fiber alignment at larger scales. Useful for detecting regions of high alignment vs. isotropic fiber distributions:
+
+```python
+from ppm_library.surface_analysis import (
+    compute_window_alignment,
+    render_window_alignment_overlay,
+    render_window_orientation_overlay,
+    save_window_metrics
+)
+
+# Compute per-window alignment metrics
+window_metrics = compute_window_alignment(
+    fiber_angles=angles,           # From angle_map.angles
+    fiber_mask=angle_map.valid_mask,
+    window_px=32,                  # 32x32 pixel windows
+    stride_px=16,                  # 50% overlap
+    min_pixels=10                  # Minimum valid pixels per window
+)
+
+# Render order parameter as viridis heatmap (0=isotropic, 1=perfectly aligned)
+render_window_alignment_overlay(
+    window_metrics,
+    output_path="alignment_heatmap.png",
+    region_h=angles.shape[0],
+    region_w=angles.shape[1]
+)
+
+# Render dominant orientation as HSV heatmap (hue=angle, saturation=alignment strength)
+render_window_orientation_overlay(
+    window_metrics,
+    output_path="orientation_heatmap.png",
+    region_h=angles.shape[0],
+    region_w=angles.shape[1]
+)
+
+# Save metrics for downstream analysis (e.g., emit as PathObjects in QuPath)
+save_window_metrics(window_metrics, output_dir="window_analysis/")
+```
+
+The results include:
+- **window_metrics.npz** - Full numpy arrays (mean angles, order parameters, pixel counts, centers)
+- **windows.json** - Per-window records for languages without numpy (includes only non-empty windows)
+
 ---
 
 ## Example Scripts

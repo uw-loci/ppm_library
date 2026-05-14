@@ -163,6 +163,10 @@ corrected = hue_shift(image, shift)
 - `analyze_perpendicularity()` - Analyze fiber perpendicularity with orientation fields and masks
 - `save_pixel_arrays()` - Persist per-pixel fields (deviation angles, fiber angles, masks, etc.) to `.npy` files
 - `render_orientation_overlay()` - Render a blue-to-red RGBA PNG showing relative fiber orientation
+- `compute_window_alignment()` - Aggregate per-pixel fiber orientations into a square-window grid using axial circular statistics (mean angle and order parameter)
+- `render_window_alignment_overlay()` - Viridis heatmap of per-window order parameter (fiber alignment); transparent where no data
+- `render_window_orientation_overlay()` - HSV-based heatmap of per-window dominant orientation, saturation gated by order parameter
+- `save_window_metrics()` - Export per-window metrics to both `.npz` (full arrays) and `windows.json` (per-window records for non-numpy languages)
 
 ### From `microscope_imageprocessing` (dependency, re-exported)
 - `CPUDebayer` - Bayer pattern demosaicing
