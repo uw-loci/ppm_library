@@ -159,6 +159,11 @@ corrected = hue_shift(image, shift)
 - `analyze_ppm()` - Complete workflow for PPM image analysis
 - `PPMAnalysisResult` - Analysis results with statistics and visualization
 
+### `ppm_library.surface_analysis` - Perpendicularity and Orientation Analysis
+- `analyze_perpendicularity()` - Analyze fiber perpendicularity with orientation fields and masks
+- `save_pixel_arrays()` - Persist per-pixel fields (deviation angles, fiber angles, masks, etc.) to `.npy` files
+- `render_orientation_overlay()` - Render a blue-to-red RGBA PNG showing relative fiber orientation
+
 ### From `microscope_imageprocessing` (dependency, re-exported)
 - `CPUDebayer` - Bayer pattern demosaicing
 - `BackgroundCorrectionUtils` - Flat-field correction
