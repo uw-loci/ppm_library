@@ -202,7 +202,10 @@ class TifWriterUtils:
 
     @staticmethod
     def ppm_normalized_difference_abs(
-        img1: np.ndarray, img2: np.ndarray, min_intensity: int = 0
+        img1: np.ndarray,
+        img2: np.ndarray,
+        min_intensity: int = 0,
+        input_max: Optional[float] = None,
     ) -> np.ndarray:
         """
         Calculate absolute normalized birefringence for polarized microscopy images.
@@ -210,9 +213,21 @@ class TifWriterUtils:
 
         This returns the magnitude of normalized birefringence (always positive).
 
+        The math runs in float32 and the |ratio| is scale-invariant, so inputs of
+        any integer bit depth (uint8 or uint16) produce the same normalized result;
+        higher-bit inputs simply carry finer quantization into the ratio. The one
+        scale-dependent knob is ``min_intensity`` (see below).
+
         Args:
-            img1: Positive angle image (RGB, uint8)
-            img2: Negative angle image (RGB, uint8)
+            img1: Positive angle image (RGB or grayscale; uint8 or uint16)
+            img2: Negative angle image (RGB or grayscale; uint8 or uint16)
+            min_intensity: Dark-region mask threshold expressed on the 8-bit
+                (0-255) sum scale. When ``input_max`` is given it is rescaled to
+                the input's actual full-scale so the same "count" masks the same
+                fraction of dynamic range regardless of bit depth.
+            input_max: Full-scale value of the input data (e.g. 255 for 8-bit,
+                4095 for 12-bit-in-uint16, 65535 for full uint16). When None the
+                threshold is used as-is on the 8-bit scale (backward-compatible).
 
         Returns:
             Absolute normalized difference as single channel uint16, scaled 0-65535
@@ -243,28 +258,39 @@ class TifWriterUtils:
 
         # Mask dark regions where combined intensity is below threshold.
         # Camera read noise in dark pixels creates false birefringence signal
-        # because small random differences get amplified by division.
+        # because small random differences get amplified by division. The
+        # threshold is specified on the 8-bit scale; rescale it to the input's
+        # actual full-scale so higher-bit inputs mask the same fraction of the
+        # dynamic range rather than an effectively-negligible sliver.
         if min_intensity > 0:
-            scaled = np.where(total >= min_intensity, scaled, 0)
+            effective_min = min_intensity
+            if input_max is not None and input_max > 0:
+                effective_min = min_intensity * (float(input_max) / 255.0)
+            scaled = np.where(total >= effective_min, scaled, 0)
 
         return np.clip(scaled, 0, 65535).astype(np.uint16)
 
     @staticmethod
-    def ppm_angle_sum(img1: np.ndarray, img2: np.ndarray) -> np.ndarray:
+    def ppm_angle_sum(img1: np.ndarray, img2: np.ndarray, input_max: float = 255.0) -> np.ndarray:
         """
         Calculate angle sum for polarized microscopy images.
-        Adds the two images to create a combined RGB image.
+        Adds the two images to create a combined RGB image normalized to [0, 1].
 
         Args:
             img1: First image (RGB)
             img2: Second image (RGB)
+            input_max: Full-scale value of the input data used to normalize to
+                [0, 1] (255 for 8-bit, 4095 for 12-bit-in-uint16, etc.). Defaults
+                to 255 so 8-bit callers are unchanged; higher-bit inputs must pass
+                their real full-scale or the sum saturates to white.
 
         Returns:
-            Sum image as RGB
+            Sum image as RGB float in [0, 1]
         """
         # Convert to float for calculations
-        img1_f = img1.astype(np.float32) / 255.0
-        img2_f = img2.astype(np.float32) / 255.0
+        scale = float(input_max) if input_max else 255.0
+        img1_f = img1.astype(np.float32) / scale
+        img2_f = img2.astype(np.float32) / scale
 
         # Sum RGB values (average to keep values in [0,1] range)
         rgb_sum = (img1_f + img2_f) / 2.0
@@ -280,6 +306,7 @@ class TifWriterUtils:
         pixel_size_um: float,
         tile_config_source: Optional[pathlib.Path] = None,
         logger=None,
+        input_max: float = 255.0,
     ) -> np.ndarray:
         """
         Create a single sum image from positive and negative angle images.
@@ -292,6 +319,9 @@ class TifWriterUtils:
             pixel_size_um: Pixel size for OME-TIFF metadata
             tile_config_source: Path to source TileConfiguration.txt to copy (optional)
             logger: Logger instance (optional)
+            input_max: Full-scale value of the input data (255 for 8-bit, 4095 for
+                12-bit-in-uint16, etc.). Defaults to 255 so 8-bit callers are
+                unchanged; higher-bit inputs must pass their real full-scale.
 
         Returns:
             The sum image array
@@ -309,7 +339,7 @@ class TifWriterUtils:
         # Calculate sum
         output_path = output_dir / filename
 
-        sum_img = TifWriterUtils.ppm_angle_sum(pos_image, neg_image)
+        sum_img = TifWriterUtils.ppm_angle_sum(pos_image, neg_image, input_max=input_max)
 
         # Save float version for reference
         tf.imwrite(str(output_path)[:-4] + "_float.tif", sum_img.astype(np.float32))
@@ -340,19 +370,24 @@ class TifWriterUtils:
         tile_config_source: Optional[pathlib.Path] = None,
         logger=None,
         min_intensity: int = 0,
+        input_max: Optional[float] = None,
     ) -> np.ndarray:
         """
         Create a normalized birefringence image from positive and negative angle images.
         Uses the formula [I(+) - I(-)]/[I(+) + I(-)] to suppress H&E staining variations.
 
         Args:
-            pos_image: Positive angle image
-            neg_image: Negative angle image
+            pos_image: Positive angle image (uint8 or uint16)
+            neg_image: Negative angle image (uint8 or uint16)
             output_dir: Directory to save birefringence image
             filename: Output filename
             pixel_size_um: Pixel size for OME-TIFF metadata
             tile_config_source: Path to source TileConfiguration.txt to copy (optional)
             logger: Logger instance (optional)
+            min_intensity: Dark-region mask threshold on the 8-bit sum scale.
+            input_max: Full-scale of the input data (255 / 4095 / 65535). Passed
+                through to rescale ``min_intensity`` for higher-bit inputs; None
+                keeps the 8-bit-scale behavior. The output is always uint16.
 
         Returns:
             The normalized birefringence image array (uint16, 0-65535)
@@ -371,7 +406,7 @@ class TifWriterUtils:
         output_path = output_dir / filename
 
         norm_biref_img = TifWriterUtils.ppm_normalized_difference_abs(
-            pos_image, neg_image, min_intensity=min_intensity
+            pos_image, neg_image, min_intensity=min_intensity, input_max=input_max
         )
 
         # Save as 16-bit single-channel image

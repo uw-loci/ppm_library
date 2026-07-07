@@ -474,3 +474,76 @@ class TestApplyBrightnessCorrection:
         img = _make_rgb(8, 8, r=200, g=200, b=200)
         result = TifWriterUtils.apply_brightness_correction(img, 0.5)
         np.testing.assert_array_equal(result[:, :, 0], 100)
+
+
+class TestHighBitDepthBirefringence:
+    """Dtype-aware behavior added for high-bit-depth PPM capture.
+
+    The normalized birefringence |(g1-g2)/(g1+g2)| is scale-invariant, so a
+    higher-bit input pair yields the same result as the 8-bit pair -- only the
+    quantization is finer. The scale-dependent knobs (the dark-pixel mask and the
+    sum normalization) must track the input's full-scale.
+    """
+
+    def test_normalized_biref_is_scale_invariant(self):
+        # Same relative signal at 8-bit and at "16-bit" (8-bit * 257 -> 0..65535)
+        pos8 = _make_rgb(8, 8, r=100, g=120, b=80)
+        neg8 = _make_rgb(8, 8, r=90, g=110, b=70)
+        pos16 = pos8.astype(np.uint16) * 257
+        neg16 = neg8.astype(np.uint16) * 257
+
+        biref8 = TifWriterUtils.ppm_normalized_difference_abs(pos8, neg8)
+        biref16 = TifWriterUtils.ppm_normalized_difference_abs(pos16, neg16)
+
+        assert biref8.dtype == np.uint16
+        assert biref16.dtype == np.uint16
+        # Ratio is identical; only float rounding differs.
+        np.testing.assert_allclose(biref8, biref16, atol=2)
+
+    def test_min_intensity_masks_dark_pixel_only_with_input_max(self):
+        # A dark 12-bit-scale pixel: gray sum = 140 (in 0..4095 units).
+        pos = np.full((4, 4), 80, dtype=np.uint16)
+        neg = np.full((4, 4), 60, dtype=np.uint16)
+
+        # Without input_max, the 8-bit threshold (10) is far below 140 -> kept
+        # (under-masking, but non-destructive: matches legacy behavior).
+        kept = TifWriterUtils.ppm_normalized_difference_abs(pos, neg, min_intensity=10)
+        assert (kept > 0).all()
+
+        # With input_max=4095, effective threshold = 10 * 4095/255 ~ 160 > 140,
+        # so the dark pixel is correctly zeroed.
+        masked = TifWriterUtils.ppm_normalized_difference_abs(
+            pos, neg, min_intensity=10, input_max=4095
+        )
+        assert (masked == 0).all()
+
+    def test_min_intensity_backward_compatible_8bit(self):
+        # 8-bit pair with total just at the threshold boundary.
+        pos = np.full((4, 4), 6, dtype=np.uint8)
+        neg = np.full((4, 4), 4, dtype=np.uint8)  # total = 10
+        keep = TifWriterUtils.ppm_normalized_difference_abs(pos, neg, min_intensity=10)
+        drop = TifWriterUtils.ppm_normalized_difference_abs(pos, neg, min_intensity=11)
+        assert (keep > 0).all()
+        assert (drop == 0).all()
+
+    def test_sum_normalizes_by_input_max(self):
+        pos8 = _make_rgb(8, 8, r=100, g=120, b=80)
+        neg8 = _make_rgb(8, 8, r=90, g=110, b=70)
+        pos16 = pos8.astype(np.uint16) * 257
+        neg16 = neg8.astype(np.uint16) * 257
+
+        sum8 = TifWriterUtils.ppm_angle_sum(pos8, neg8)
+        sum16 = TifWriterUtils.ppm_angle_sum(pos16, neg16, input_max=65535)
+
+        # Both normalized to [0, 1] and equal within rounding.
+        assert sum8.max() <= 1.0
+        assert sum16.max() <= 1.0
+        np.testing.assert_allclose(sum8, sum16, atol=1e-3)
+
+    def test_sum_without_input_max_saturates_on_uint16(self):
+        # Demonstrates why input_max matters: a uint16 pair divided by 255
+        # overflows the [0, 1] range (would clip to white in create_sum_tile).
+        pos16 = _make_rgb(8, 8, r=100, g=120, b=80).astype(np.uint16) * 257
+        neg16 = _make_rgb(8, 8, r=90, g=110, b=70).astype(np.uint16) * 257
+        sum_bad = TifWriterUtils.ppm_angle_sum(pos16, neg16)  # default input_max=255
+        assert sum_bad.max() > 1.0
