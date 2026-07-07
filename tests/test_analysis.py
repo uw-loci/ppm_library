@@ -500,6 +500,7 @@ class TestComputeSimplePerpendicularity:
         result = compute_simple_perpendicularity(fiber_angles, fiber_mask, mask, zone)
         expected_keys = {
             "deviation_angles",
+            "normal_angle_deg",
             "mean_deviation_deg",
             "std_deviation_deg",
             "histogram_10deg",
