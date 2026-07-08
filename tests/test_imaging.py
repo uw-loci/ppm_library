@@ -416,6 +416,26 @@ class TestPpmNormalizedDifferenceAbs:
         ba = TifWriterUtils.ppm_normalized_difference_abs(b, a)
         np.testing.assert_array_equal(ab, ba)
 
+    def test_hue_rotation_not_cancelled(self):
+        # Real collagen-fibre pixel that the luminance-first method cancelled:
+        # the colour rotates hard between angles but the weighted luminance is
+        # nearly equal (L+ ~= 138, L- ~= 130), so luminance biref read ~1900/65535
+        # while the true per-channel signal is ~13-14k. Per-channel must recover it.
+        pos = _make_rgb(4, 4, r=124, g=149, b=120)
+        neg = _make_rgb(4, 4, r=202, g=90, b=150)
+        biref = TifWriterUtils.ppm_normalized_difference_abs(pos, neg)
+        # color_rms ~= 0.209 -> ~13700; assert it is well above the ~1900 a
+        # luminance-first collapse would have produced.
+        assert biref[0, 0] > 10000
+
+    def test_grayscale_matches_scalar_ratio(self):
+        # 2-D (already-grayscale) inputs reduce to |(I1 - I2)/(I1 + I2)|.
+        a = np.full((4, 4), 120, dtype=np.uint8)
+        b = np.full((4, 4), 80, dtype=np.uint8)
+        result = TifWriterUtils.ppm_normalized_difference_abs(a, b)
+        expected = int(round(abs(120 - 80) / (120 + 80) * 65535))
+        assert abs(int(result[0, 0]) - expected) <= 2
+
 
 class TestPpmAngleSum:
     """Tests for TifWriterUtils.ppm_angle_sum."""

@@ -209,48 +209,59 @@ class TifWriterUtils:
     ) -> np.ndarray:
         """
         Calculate absolute normalized birefringence for polarized microscopy images.
-        Formula: |[I(+) - I(-)]/[I(+) + I(-)]|, converted to grayscale first.
+
+        Computes the normalized difference PER RGB CHANNEL and combines the three
+        channels as a root-mean-square magnitude::
+
+            nd_c  = (I1_c - I2_c) / (I1_c + I2_c)      for c in {R, G, B}
+            biref = sqrt(mean(nd_R^2, nd_G^2, nd_B^2))
+
+        Working per channel -- rather than collapsing each angle to a single
+        luminance value BEFORE differencing -- preserves birefringence signal from
+        structures whose colour rotates between the two polarization angles while
+        their weighted luminance stays roughly equal. With the previous
+        luminance-first method those structures produced diff ~= 0 and cancelled to
+        zero, breaking continuous collagen fibres into a "segmented" pattern.
 
         This returns the magnitude of normalized birefringence (always positive).
-
-        The math runs in float32 and the |ratio| is scale-invariant, so inputs of
-        any integer bit depth (uint8 or uint16) produce the same normalized result;
-        higher-bit inputs simply carry finer quantization into the ratio. The one
+        The per-channel ratio is scale-invariant, so uint8 and uint16 input pairs
+        produce the same result; higher-bit inputs simply carry finer quantization.
+        Grayscale (2-D) inputs reduce to |(I1 - I2)/(I1 + I2)|. The one
         scale-dependent knob is ``min_intensity`` (see below).
 
         Args:
             img1: Positive angle image (RGB or grayscale; uint8 or uint16)
             img2: Negative angle image (RGB or grayscale; uint8 or uint16)
             min_intensity: Dark-region mask threshold expressed on the 8-bit
-                (0-255) sum scale. When ``input_max`` is given it is rescaled to
-                the input's actual full-scale so the same "count" masks the same
-                fraction of dynamic range regardless of bit depth.
+                (0-255) summed-luminance scale. When ``input_max`` is given it is
+                rescaled to the input's actual full-scale so the same "count" masks
+                the same fraction of dynamic range regardless of bit depth.
             input_max: Full-scale value of the input data (e.g. 255 for 8-bit,
                 4095 for 12-bit-in-uint16, 65535 for full uint16). When None the
                 threshold is used as-is on the 8-bit scale (backward-compatible).
 
         Returns:
-            Absolute normalized difference as single channel uint16, scaled 0-65535
-            where 0 = no birefringence, 65535 = maximum birefringence
+            Absolute normalized birefringence magnitude as single channel uint16,
+            scaled 0-65535 where 0 = no birefringence, 65535 = maximum birefringence
         """
-        # Convert RGB to grayscale using standard luminance weights
-        if len(img1.shape) == 3:
-            gray1 = np.dot(img1[..., :3].astype(np.float32), [0.2989, 0.5870, 0.1140])
-        else:
-            gray1 = img1.astype(np.float32)
-
-        if len(img2.shape) == 3:
-            gray2 = np.dot(img2[..., :3].astype(np.float32), [0.2989, 0.5870, 0.1140])
-        else:
-            gray2 = img2.astype(np.float32)
-
-        # Calculate difference and sum
-        diff = gray1 - gray2
-        total = gray1 + gray2
-
         # Avoid division by zero - use small epsilon
         epsilon = 1e-6
-        normalized = np.abs(diff / (total + epsilon))
+        a = img1.astype(np.float32)
+        b = img2.astype(np.float32)
+
+        if a.ndim == 3:
+            a3 = a[..., :3]
+            b3 = b[..., :3]
+            # Per-channel normalized difference, combined as RMS across channels.
+            nd = (a3 - b3) / (a3 + b3 + epsilon)
+            normalized = np.sqrt(np.mean(np.square(nd), axis=-1))
+            # Dark-region gate uses summed luminance (unchanged threshold semantics).
+            weights = np.array([0.2989, 0.5870, 0.1140], dtype=np.float32)
+            total = np.dot(a3, weights) + np.dot(b3, weights)
+        else:
+            nd = (a - b) / (a + b + epsilon)
+            normalized = np.abs(nd)
+            total = a + b
 
         # normalized is in range [0, 1]
         # Scale to uint16: 0 -> 0, 1 -> 65535
@@ -258,8 +269,8 @@ class TifWriterUtils:
 
         # Mask dark regions where combined intensity is below threshold.
         # Camera read noise in dark pixels creates false birefringence signal
-        # because small random differences get amplified by division. The
-        # threshold is specified on the 8-bit scale; rescale it to the input's
+        # because small random per-channel differences get amplified by division.
+        # The threshold is specified on the 8-bit scale; rescale it to the input's
         # actual full-scale so higher-bit inputs mask the same fraction of the
         # dynamic range rather than an effectively-negligible sliver.
         if min_intensity > 0:
@@ -374,7 +385,9 @@ class TifWriterUtils:
     ) -> np.ndarray:
         """
         Create a normalized birefringence image from positive and negative angle images.
-        Uses the formula [I(+) - I(-)]/[I(+) + I(-)] to suppress H&E staining variations.
+        Uses the per-channel normalized difference [I(+) - I(-)]/[I(+) + I(-)] combined
+        as an RMS magnitude (see ppm_normalized_difference_abs); the intensity
+        normalization suppresses H&E staining brightness variations.
 
         Args:
             pos_image: Positive angle image (uint8 or uint16)
