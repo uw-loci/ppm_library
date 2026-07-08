@@ -5,6 +5,16 @@ All notable changes to the PPM Library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-07
+
+### Changed
+
+- **Birefringence computation now uses per-channel color-RMS instead of luminance-first method.** The normalized difference is computed per RGB channel, then combined as a root-mean-square magnitude: `biref = sqrt(mean(nd_R^2, nd_G^2, nd_B^2))`. This preserves birefringence signal from structures whose color rotates between polarization angles while their weighted luminance stays nearly equal. With the previous luminance-first approach, such structures would cancel to near-zero and appear as discontinuous segments; the per-channel method keeps them continuous. Existing images computed with the old method will show different birefringence values if recomputed.
+
+### Added
+
+- `ppm-recompute-biref` command-line tool to regenerate birefringence images in a folder using the current per-channel method. Walks recursively, locates positive/negative angle source tiles for each birefringence file, and rewrites using the current algorithm. Handles arbitrarily large images via streaming and memory-mapping. Usage: `ppm-recompute-biref FOLDER [--suffix _colorrms] [--overwrite] [--dry-run]`.
+
 ## [1.3.5] - 2026-05-14
 
 ### Added
