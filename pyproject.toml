@@ -29,6 +29,7 @@ dependencies = [
     "scikit-image>=0.21.0",
     "tifffile>=2023.7.0",
     "imagecodecs>=2023.7.0",  # Required for LZW and other TIFF compression codecs
+    "zarr>=2.16",  # Required by ppm-recompute-biref for streaming large tiles via tifffile's zarr store
     "opencv-python>=4.8.0",
     "Pillow>=10.0.0",
     "matplotlib>=3.7.0",
