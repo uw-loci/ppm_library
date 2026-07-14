@@ -25,9 +25,17 @@ biref = sqrt(mean(nd_R^2, nd_G^2, nd_B^2))
 ```
 
 This keeps those structures continuous. This tool re-derives each old biref from its two
-original angle source tiles using the *current* library function
-(`TifWriterUtils.ppm_normalized_difference_abs`), so the output is byte-for-byte
+original angle source images using the *current* library function
+(`TifWriterUtils.ppm_normalized_difference_abs`), so the pixel values are byte-for-byte
 consistent with what fresh acquisitions now produce.
+
+**Output format matches the production stitched biref.** The recomputed file is a
+**pyramidal OME-TIFF** with the same structure the QPSC stitcher writes: single-channel
+16-bit (uint16, minisblack, big-endian), 512-pixel tiles, LZW compression, factor-2
+pyramid levels down to the tile size, BigTIFF when the image is large, and the physical
+pixel size carried over from the source. So a regenerated slide drops into QuPath and
+loads at full pyramid speed exactly like the original. Tile size and compression are
+adjustable (`--tile`, `--compression`) if you need to match a non-default setup.
 
 > **Hard requirement:** recomputation is only possible while **both** angle source tiles
 > still exist next to the biref. Those originals are large and are often deleted after
@@ -160,8 +168,10 @@ resumes where it stopped and skips work already done. Force a redo with `--force
 | `--dry-run` | off | Report what would happen; write nothing. |
 | `--force` | off | Recompute even if the output already exists. |
 | `--min-intensity` | `0.0` | Dark-region mask threshold (8-bit scale); pixels dimmer than this are masked out of the biref. |
-| `--strip` | `2048` | Row-strip height for streaming -- **lower this to cut RAM** on very wide images. |
-| `--mem-budget-gb` | `3.0` | Max RAM for the *output* array before switching to a memory-mapped write. |
+| `--strip` | `2048` | Row-strip height for streaming reads/downsampling -- **lower this to cut RAM** on very wide images. |
+| `--tile` | `512` | Output tile size (matches the QPSC stitched biref). |
+| `--compression` | `lzw` | Output compression: `lzw` (default, matches QPSC), `zlib`, `jpeg2000`, or `none`. |
+| `--mem-budget-gb` | `3.0` | Hold the full-res biref in RAM up to this size; above it, use a temporary memory-mapped file beside the output. **Raise this on a high-RAM machine** to keep large slides fully in RAM (faster). |
 
 Exit code is `0` on success, `1` if any file failed, `2` if the folder path is invalid.
 
@@ -184,15 +194,24 @@ Two things consume memory per file:
    `--strip` (e.g. `--strip 512`); it trades a bit of speed for a ~4x smaller strip
    footprint.
 
-2. **The output array.** If the full output (`height * width * 2 bytes`, uint16) fits
-   within `--mem-budget-gb`, it is built in RAM and written once. If it exceeds the
-   budget, the tool automatically memory-maps the output to disk and fills it strip by
-   strip -- so arbitrarily large slides still work, just with more disk I/O. Raise
-   `--mem-budget-gb` on a big-RAM box to keep more outputs fully in memory (faster).
+2. **The full-resolution biref.** The single-channel uint16 biref is `height * width * 2
+   bytes` (e.g. a 100,000 x 100,000 slide is ~20 GB; 200,000 x 200,000 is ~80 GB). If it
+   fits within `--mem-budget-gb` it is built in RAM; the pyramid levels are then generated
+   by strip-wise 2x2 averaging (each level is 1/4 the previous, so they add little). If it
+   exceeds the budget, the tool builds the full-res biref in a **temporary memory-mapped
+   file beside the output** and streams the pyramid write from there -- so arbitrarily
+   large slides still work, at the cost of temp disk equal to the biref size (the temp is
+   deleted when the file finishes). Raise `--mem-budget-gb` on a big-RAM box to keep the
+   biref fully in RAM (faster, no temp file).
 
-**Rule of thumb:** for very large/wide slides, prefer a machine with 32-64 GB+ RAM, keep
-the default strip (or lower it if you go wider than ~100k px), and give
-`--mem-budget-gb` a few GB less than your free RAM so the strip buffers have headroom.
+**On a high-RAM machine (e.g. 512 GB):** set `--mem-budget-gb` high (for example
+`--mem-budget-gb 300`) so even very large slides stay in RAM. Keep the default `--strip`
+(or lower it if a slide is wider than ~100k px). The strip buffers and the in-RAM biref
+are the two consumers; with hundreds of GB you have ample headroom for both.
+
+```bash
+ppm-recompute-biref "/path/to/images" --mem-budget-gb 300
+```
 
 ---
 

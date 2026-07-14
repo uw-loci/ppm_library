@@ -194,7 +194,7 @@ pytest --cov=ppm_library --cov-report=html
 
 ### Command-Line Tools
 
-- `ppm-recompute-biref` - Regenerate birefringence images using the current per-channel method. Walks a folder recursively, finds birefringence images, locates their source positive/negative angle tiles, and rewrites the birefringence using the current algorithm. Handles arbitrarily large images via streaming. Usage: `ppm-recompute-biref FOLDER [--suffix _colorrms] [--overwrite] [--dry-run]`. **Setup + operator guide (new-computer install, file-naming, RAM tuning): [`docs/RECOMPUTE_BIREF_GUIDE.md`](docs/RECOMPUTE_BIREF_GUIDE.md).**
+- `ppm-recompute-biref` - Regenerate birefringence images using the current per-channel method. Walks a folder recursively, finds birefringence images, locates their source positive/negative angle images, and rewrites the birefringence using the current algorithm. Output is a pyramidal OME-TIFF matching the production stitched biref (uint16, 512-px tiles, LZW, factor-2 levels); handles arbitrarily large slides via streaming + memory-mapping. Usage: `ppm-recompute-biref FOLDER [--suffix _colorrms] [--overwrite] [--dry-run] [--tile 512] [--compression lzw] [--mem-budget-gb N]`. **Setup + operator guide (new-computer install, file-naming, RAM tuning): [`docs/RECOMPUTE_BIREF_GUIDE.md`](docs/RECOMPUTE_BIREF_GUIDE.md).**
 - `ppm-analyze` - Command-line interface for PPM analysis (see `ppm_library.analysis.cli`).
 
 ### Hardware Diagnostic Tools
