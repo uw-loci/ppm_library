@@ -121,6 +121,36 @@ ppm-recompute-biref --help
 python -m ppm_library.tools.recompute_biref --help
 ```
 
+### 3.5 Trying it on the acquisition (PPM) machine
+
+On the PPM microscope you do **not** set up from scratch: `ppm_library` is already
+installed there (it computes birefringence during acquisition). You just **update** it. In
+the environment where `ppm_library` lives:
+
+```bash
+cd <path-to-ppm_library-on-the-scope>
+git pull
+pip install -e .          # or: pip install .
+ppm-recompute-biref --help
+```
+
+That registers the `ppm-recompute-biref` command **and** installs the one new dependency,
+`zarr`; `numpy`, `tifffile`, and `imagecodecs` (LZW) are already `ppm_library`
+dependencies. A bare `git pull` is not enough -- the console command is a new entry point
+and `zarr` is a new dependency, both added at install time. If you would rather not
+reinstall the package:
+
+```bash
+pip install zarr
+python -m ppm_library.tools.recompute_biref --help
+```
+
+Small test images need no RAM flags (the default in-RAM path handles them). Note that
+recently acquired images were already written with the current per-channel method, so
+recomputing them reproduces nearly identical values -- useful to confirm the tool runs and
+emits a valid pyramidal OME-TIFF, but you will only see a real before/after difference on
+older luminance-first images.
+
 ---
 
 ## 4. Running it
