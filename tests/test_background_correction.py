@@ -65,7 +65,10 @@ class TestApplyFlatFieldCorrection:
     def test_divide_method_basic(self, synthetic_raw_image, synthetic_background_image):
         """Test basic divide method for flat-field correction."""
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image, synthetic_background_image, method="divide", scaling_factor=1.0
+            synthetic_raw_image,
+            synthetic_background_image,
+            method="divide",
+            scaling_factor=1.0,
         )
 
         # Check output properties
@@ -79,7 +82,10 @@ class TestApplyFlatFieldCorrection:
     def test_subtract_method_basic(self, synthetic_raw_image, synthetic_background_image):
         """Test basic subtract method for background correction."""
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image, synthetic_background_image, method="subtract", scaling_factor=1.0
+            synthetic_raw_image,
+            synthetic_background_image,
+            method="subtract",
+            scaling_factor=1.0,
         )
 
         assert corrected.shape == synthetic_raw_image.shape
@@ -92,7 +98,10 @@ class TestApplyFlatFieldCorrection:
         """Test that divide method reduces vignetting effect."""
         # Apply correction
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image, synthetic_background_image, method="divide", scaling_factor=1.0
+            synthetic_raw_image,
+            synthetic_background_image,
+            method="divide",
+            scaling_factor=1.0,
         )
 
         # Vignetting causes lower values at edges
@@ -114,11 +123,17 @@ class TestApplyFlatFieldCorrection:
     def test_scaling_factor_effect(self, synthetic_raw_image, synthetic_background_image):
         """Test that scaling factor affects output intensity."""
         corrected_1x = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image, synthetic_background_image, method="divide", scaling_factor=1.0
+            synthetic_raw_image,
+            synthetic_background_image,
+            method="divide",
+            scaling_factor=1.0,
         )
 
         corrected_2x = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image, synthetic_background_image, method="divide", scaling_factor=2.0
+            synthetic_raw_image,
+            synthetic_background_image,
+            method="divide",
+            scaling_factor=2.0,
         )
 
         # 2x scaling should produce brighter result
@@ -135,7 +150,11 @@ class TestApplyFlatFieldCorrection:
 
         # Should not crash or produce inf/nan
         corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-            synthetic_raw_image, zero_background, method="divide", scaling_factor=1.0, epsilon=1.0
+            synthetic_raw_image,
+            zero_background,
+            method="divide",
+            scaling_factor=1.0,
+            epsilon=1.0,
         )
 
         assert np.all(np.isfinite(corrected))
@@ -145,14 +164,20 @@ class TestApplyFlatFieldCorrection:
         """Test handling of transposed or mismatched background dimensions."""
         # Transposed background (common issue)
         background_transposed = (
-            np.ones((synthetic_raw_image.shape[1], synthetic_raw_image.shape[0]), dtype=np.uint16)
+            np.ones(
+                (synthetic_raw_image.shape[1], synthetic_raw_image.shape[0]),
+                dtype=np.uint16,
+            )
             * 15000
         )
 
         # Should handle transpose automatically or raise clear error
         try:
             corrected = BackgroundCorrectionUtils.apply_flat_field_correction(
-                synthetic_raw_image, background_transposed, method="divide", scaling_factor=1.0
+                synthetic_raw_image,
+                background_transposed,
+                method="divide",
+                scaling_factor=1.0,
             )
             # If it succeeds, check output is valid
             assert corrected.shape == synthetic_raw_image.shape
@@ -242,64 +267,51 @@ class TestValidateBackgroundImages:
 
     def test_validate_with_all_present(self, tmp_path):
         """Test validation when all required background images are present."""
-        # Create temporary background directory structure
+        # Create the on-disk layout the validator expects: <modality>/<angle>/background.tif
         bg_dir = tmp_path / "backgrounds"
         modality_dir = bg_dir / "ppm_20x"
-        modality_dir.mkdir(parents=True)
 
-        # Create dummy background files for standard PPM angles
         for angle in [0, 45, 90, 135]:
-            (modality_dir / f"bg_{angle}.tif").touch()
+            angle_dir = modality_dir / str(angle)
+            angle_dir.mkdir(parents=True)
+            (angle_dir / "background.tif").touch()
 
-        # Should validate successfully
-        try:
-            is_valid = BackgroundCorrectionUtils.validate_background_images(
-                str(bg_dir), modality="ppm_20x", required_angles=[0, 45, 90, 135]
-            )
-            assert is_valid is True
-        except Exception:
-            # Function might not exist or have different signature
-            pytest.skip("validate_background_images not available")
+        is_valid, missing = BackgroundCorrectionUtils.validate_background_images(
+            bg_dir, modality="ppm_20x", required_angles=[0, 45, 90, 135]
+        )
+        assert is_valid is True
+        assert missing == []
 
     def test_validate_with_missing_angle(self, tmp_path):
         """Test validation when a required background angle is missing."""
         bg_dir = tmp_path / "backgrounds"
         modality_dir = bg_dir / "ppm_20x"
-        modality_dir.mkdir(parents=True)
 
-        # Create only some background files (missing 135 degree)
+        # Create only some background images (missing 135 degree)
         for angle in [0, 45, 90]:
-            (modality_dir / f"bg_{angle}.tif").touch()
+            angle_dir = modality_dir / str(angle)
+            angle_dir.mkdir(parents=True)
+            (angle_dir / "background.tif").touch()
 
-        try:
-            is_valid = BackgroundCorrectionUtils.validate_background_images(
-                str(bg_dir), modality="ppm_20x", required_angles=[0, 45, 90, 135]
-            )
-            # Should indicate missing files
-            assert is_valid is False or is_valid is None
-        except (FileNotFoundError, ValueError):
-            # Expected to raise error for missing files
-            pass
-        except Exception:
-            pytest.skip("validate_background_images not available or different signature")
+        is_valid, missing = BackgroundCorrectionUtils.validate_background_images(
+            bg_dir, modality="ppm_20x", required_angles=[0, 45, 90, 135]
+        )
+        # Should report the missing angle
+        assert is_valid is False
+        assert 135 in missing
 
     def test_validate_with_missing_modality_directory(self, tmp_path):
         """Test validation when entire modality directory is missing."""
         bg_dir = tmp_path / "backgrounds"
         bg_dir.mkdir(parents=True)
 
-        # Don't create modality subdirectory
-
-        try:
-            is_valid = BackgroundCorrectionUtils.validate_background_images(
-                str(bg_dir), modality="ppm_20x", required_angles=[0, 45, 90, 135]
-            )
-            assert is_valid is False
-        except (FileNotFoundError, ValueError):
-            # Expected to raise error
-            pass
-        except Exception:
-            pytest.skip("validate_background_images not available")
+        # Don't create the modality subdirectory
+        is_valid, missing = BackgroundCorrectionUtils.validate_background_images(
+            bg_dir, modality="ppm_20x", required_angles=[0, 45, 90, 135]
+        )
+        # A missing modality directory means all angles are missing
+        assert is_valid is False
+        assert missing == [0, 45, 90, 135]
 
 
 class TestGetModalityFromScanType:
