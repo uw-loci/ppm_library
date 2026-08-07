@@ -5,6 +5,23 @@ All notable changes to the PPM Library will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-07
+
+### Changed
+
+- **BREAKING: `pattern` is now a required argument throughout `ppm_library.debayering.cpu`.**
+  `CPUDebayer.__init__` defaulted to `'RGGB'` while `process_image`,
+  `process_data` and `batch_process` in the same module defaulted to
+  `'GRBG'`, so the same image debayered differently depending on which
+  entry point the caller used. A sensor's mosaic order is a physical
+  property of that sensor: getting it wrong silently swaps red and blue
+  (or shifts the green diagonal) in every frame, with no error. There is
+  no default that is right for an arbitrary camera, so there is now no
+  default at all. Every existing call site in the project already passed
+  `pattern` explicitly; the three module-level functions had no callers.
+  Mirrored in `microscope_imageprocessing` 0.3.0, from which this module
+  is re-exported.
+
 ## [1.4.1] - 2026-07-14
 
 ### Changed
